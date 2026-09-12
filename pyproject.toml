@@ -1,0 +1,31 @@
+[project]
+name = "agent-components"
+version = "0.1.0"
+description = "A curated monorepo of composable components for building AI applications."
+readme = "README.md"
+requires-python = ">=3.10"
+# The root is a virtual package: no first-party code lives here, it only
+# owns the workspace. Per-component dependencies live in components/*.
+dependencies = []
+
+[tool.uv.workspace]
+members = ["core", "components/*"]
+
+# Make every workspace member resolvable as a local path dependency by name.
+[tool.uv.sources]
+components-core = { workspace = true }
+agentic-router = { workspace = true }
+memory-store = { workspace = true }
+model-gateway = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "redis>=5.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["components"]

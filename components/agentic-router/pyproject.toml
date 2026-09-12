@@ -1,0 +1,33 @@
+[project]
+name = "agentic-router"
+version = "0.1.0"
+description = "A vLLM-backed agentic router that routes tasks between a lower and higher model with tools, planning, streaming and session memory."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Ghanshyam" }]
+license = { text = "MIT" }
+dependencies = [
+    "components-core",
+    "memory-store",
+    "model-gateway",
+    "openai>=1.40",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "sse-starlette>=2.1",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "typer>=0.12",
+    "rich>=13.7",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+]
+
+[project.scripts]
+agentic-router = "agentic_router.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agentic_router"]

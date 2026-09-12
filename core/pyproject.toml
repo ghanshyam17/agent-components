@@ -1,0 +1,13 @@
+[project]
+name = "components-core"
+version = "0.1.0"
+description = "Shared primitives (models, logging, errors) for agent-components."
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2.6"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/components_core"]

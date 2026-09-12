@@ -1,0 +1,43 @@
+# Example model-gateway config.
+# Point the router at this file with GATEWAY_CONFIG=gateway.yaml, then the
+# router routes to the "lower" / "higher" aliases defined here — across all
+# their endpoints, with load balancing and fallback.
+#
+# Each endpoint is any OpenAI-compatible backend: vLLM, TGI, Ollama (--port),
+# or a cloud API (set api_key + base_url).
+
+endpoints:
+  - name: vllm-small
+    base_url: http://localhost:8001/v1
+    api_key: EMPTY
+    model: qwen2.5-1.5b-instruct
+    rps: 20            # cap 20 req/s
+    max_concurrency: 8
+  - name: vllm-small-replica
+    base_url: http://localhost:8011/v1
+    api_key: EMPTY
+    model: qwen2.5-1.5b-instruct
+    weight: 1
+  - name: vllm-large
+    base_url: http://localhost:8002/v1
+    api_key: EMPTY
+    model: qwen2.5-32b-instruct
+    rps: 5
+    max_concurrency: 4
+  - name: cloud-fallback-large
+    base_url: https://api.openai.com/v1
+    api_key: ${OPENAI_API_KEY}
+    model: gpt-4o-mini
+    weight: 1
+
+groups:
+  - alias: lower
+    endpoints: [vllm-small, vllm-small-replica]
+    strategy: round_robin     # round_robin | weighted | failover
+    max_retries: 2
+    retry_backoff: 0.5
+  - alias: higher
+    endpoints: [vllm-large, cloud-fallback-large]
+    strategy: failover        # try vllm-large first, then cloud on failure
+    max_retries: 2
+    retry_backoff: 0.5
