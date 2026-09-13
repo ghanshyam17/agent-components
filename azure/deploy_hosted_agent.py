@@ -1,4 +1,8 @@
-"""Deploy the agent-components hosted agent (agent name: agcomps-router)."""
+"""Deploy the agent-components hosted agent (agent name: agcomps-router).
+
+Vendors the monorepo packages the agent needs into _vendor/ inside the zip:
+components_core, agentic_router, memory_store, model_gateway.
+"""
 
 from __future__ import annotations
 
@@ -22,8 +26,17 @@ from azure.ai.projects.models import (
 from azure.identity import DefaultAzureCredential
 
 HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parent.parent
 SRC = (HERE / "hosted-agent" / "src").resolve()
+
 EXCLUDED = {".git", ".venv", "__pycache__", ".env", ".pytest_cache"}
+
+VENDOR_SOURCES = [
+    (REPO_ROOT / "core" / "src" / "components_core", "components_core"),
+    (REPO_ROOT / "components" / "agentic-router" / "agentic_router", "agentic_router"),
+    (REPO_ROOT / "components" / "memory-store" / "memory_store", "memory_store"),
+    (REPO_ROOT / "components" / "model-gateway" / "model_gateway", "model_gateway"),
+]
 
 
 def create_code_zip(source_dir: Path) -> Path:
@@ -35,6 +48,13 @@ def create_code_zip(source_dir: Path) -> Path:
             if any(part in EXCLUDED for part in path.parts):
                 continue
             zf.write(path, path.relative_to(source_dir))
+        for src_dir, pkg_name in VENDOR_SOURCES:
+            if not src_dir.is_dir():
+                raise RuntimeError(f"vendored source missing: {src_dir}")
+            for path in src_dir.rglob("*"):
+                if not path.is_file() or "__pycache__" in path.parts:
+                    continue
+                zf.write(path, Path("_vendor") / pkg_name / path.relative_to(src_dir))
     return zip_path
 
 
@@ -52,8 +72,6 @@ def wait_for_active(client: AIProjectClient, agent_name: str, version: str) -> N
 
 
 def main() -> None:
-    import argparse
-
     ap = argparse.ArgumentParser()
     ap.add_argument("--wait", action="store_true")
     args = ap.parse_args()
@@ -63,7 +81,7 @@ def main() -> None:
     agent_name = os.environ.get("FOUNDRY_HOSTED_AGENT_NAME", "agcomps-router")
 
     zip_path = create_code_zip(SRC)
-    print(f"code zip: {zip_path}")
+    print(f"code zip: {zip_path} ({zip_path.stat().st_size} bytes)")
 
     with zip_path.open("rb") as code_stream, DefaultAzureCredential() as cred, \
             AIProjectClient(endpoint=endpoint, credential=cred) as client:
