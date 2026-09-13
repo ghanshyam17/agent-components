@@ -11,3 +11,9 @@ venv/
 .mypy_cache/
 .ruff_cache/
 *.log
+# terraform working dirs + state (contain secrets)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.venv-deploy/

@@ -1,0 +1,5 @@
+azure-functions
+pydantic>=2.6
+pydantic-settings>=2.0
+httpx>=0.27
+openai>=1.40

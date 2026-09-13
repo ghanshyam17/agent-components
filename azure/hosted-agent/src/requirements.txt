@@ -1,0 +1,8 @@
+langchain-azure-ai[hosting]>=1.2.4
+langchain
+langchain-mcp-adapters
+mcp>=1.24,<2
+httpx
+python-dotenv
+pydantic-settings>=2.0
+openai>=1.40
