@@ -38,13 +38,17 @@ class ModelClient:
         max_tokens: int | None = None,
     ) -> tuple[str, list[ToolCallRequest]]:
         """Non-streaming completion. Returns (content, tool_calls)."""
-        resp = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages_to_openai(messages),
-            tools=tools,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        kwargs = {
+            "model": self.model,
+            "messages": messages_to_openai(messages),
+        }
+        if not self.model.startswith("gpt-5"):
+            kwargs["temperature"] = temperature
+        if tools is not None:
+            kwargs["tools"] = tools
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        resp = await self.client.chat.completions.create(**kwargs)
         choice = resp.choices[0]
         msg = choice.message
         content = msg.content or ""
@@ -72,14 +76,18 @@ class ModelClient:
         When tools are provided and the model picks one, no deltas are
         streamed — a single "tool_calls" event is yielded instead.
         """
-        stream = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages_to_openai(messages),
-            tools=tools,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            stream=True,
-        )
+        stream_kwargs = {
+            "model": self.model,
+            "messages": messages_to_openai(messages),
+            "stream": True,
+        }
+        if not self.model.startswith("gpt-5"):
+            stream_kwargs["temperature"] = temperature
+        if tools is not None:
+            stream_kwargs["tools"] = tools
+        if max_tokens is not None:
+            stream_kwargs["max_tokens"] = max_tokens
+        stream = await self.client.chat.completions.create(**stream_kwargs)
         collected: list[str] = []
         tool_buffers: dict[int, dict[str, str]] = {}
         has_tool_calls = False

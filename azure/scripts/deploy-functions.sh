@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Assemble + deploy the agentic-router Function app via zip-push (Kudu) - no func CLI.
-# Python v2 model: function_app.py must sit at the app ROOT (not a subfolder).
+# Assemble + deploy the agentic-router Function app via `func publish` (remote build).
+# Python v2 model: function_app.py sits at the app ROOT.
 set -euo pipefail
 RG="${RG:-my-foundry-rg}"
 APP="${APP:-agcomps-agent-api}"
+FUNC_BIN="${FUNC_BIN:-$HOME/bin/func-cli/func}"
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
-# Flat layout at wwwroot root:
 cp "$ROOT/azure/functions/host.json" "$STAGE/"
 cp "$ROOT/azure/functions/requirements.txt" "$STAGE/"
 cp "$ROOT/azure/functions/agent-api/function_app.py" "$STAGE/"
@@ -19,12 +19,7 @@ cp -R "$ROOT/components/agentic-router/agentic_router" "$STAGE/_vendor/agentic_r
 cp -R "$ROOT/components/memory-store/memory_store" "$STAGE/_vendor/memory_store"
 cp -R "$ROOT/components/model-gateway/model_gateway" "$STAGE/_vendor/model_gateway" 2>/dev/null || true
 
+find "$STAGE" -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null || true
+
 echo "deploying $APP from $STAGE"
-ZIP="$(mktemp -u).zip"
-(cd "$STAGE" && zip -qr "$ZIP" .)
-az functionapp deployment source config-zip -g "$RG" -n "$APP" --src "$ZIP" >/dev/null
-echo "uploaded. syncing + waiting for the worker to restart..."
-sleep 20
-az rest --method get --url "https://management.azure.com/subscriptions/$(
-  az account show --query id -o tsv)/resourceGroups/$RG/providers/Microsoft.Web/sites/$APP/functions?api-version=2023-12-01" \
-  --query '[].{name:name, status:properties.status}' -o table
+(cd "$STAGE" && "$FUNC_BIN" azure functionapp publish "$APP" --python) | tail -8

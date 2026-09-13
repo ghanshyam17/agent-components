@@ -1,0 +1,82 @@
+name: azure-checks
+
+on:
+  push:
+    paths: ["azure/**"]
+  workflow_dispatch:
+
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Syntax-check azure/ python + JSON + terraform fmt
+        run: |
+          python - <<'PY'
+          import json, pathlib, py_compile
+          root = pathlib.Path("azure")
+          bad = 0
+          for p in root.rglob("*.py"):
+              try:
+                  py_compile.compile(str(p), doraise=True)
+              except Exception as e:
+                  bad += 1
+                  print("PY FAIL", p, e)
+          for p in root.rglob("*.json"):
+              try:
+                  json.loads(p.read_text())
+              except Exception as e:
+                  bad += 1
+                  print("JSON FAIL", p, e)
+          if bad:
+              raise SystemExit(f"{bad} invalid file(s)")
+          PY
+
+  terraform-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: azure/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform init -backend=false
+      - run: terraform validate
+      - run: terraform fmt -check -recursive || true
+
+  deploy-hosted-agent:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: azure-deploy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - run: pip install "azure-ai-projects>=2.3.0" azure-identity python-dotenv
+      - run: python azure/deploy_hosted_agent.py --wait
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}
+          FOUNDRY_MODEL_NAME: gpt-5-mini
+
+  deploy-functions:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: azure-deploy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm i -g azure-functions-core-tools@4 --unsafe-perm true
+      - run: bash azure/scripts/deploy-functions.sh
+        env:
+          FOUNDRY_PROJECT_ENDPOINT: ${{ secrets.FOUNDRY_PROJECT_ENDPOINT }}

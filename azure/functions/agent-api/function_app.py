@@ -49,20 +49,55 @@ logger = logging.getLogger("agent-api")
 app = func.FunctionApp()
 
 _AGENT = None
+_TOKEN = None  # (token_string, expires_at_epoch)
+
+
+def _foundry_base_url() -> str:
+    """OpenAI-compatible data plane base URL (custom-subdomain host!)."""
+    explicit = os.environ.get("FOUNDRY_OPENAI_BASE_URL")
+    if explicit:
+        return explicit.rstrip("/")
+    endpoint = os.environ.get(
+        "FOUNDRY_PROJECT_ENDPOINT",
+        "https://my-foundry-usecase.services.ai.azure.com/api/projects/agent-lab",
+    )
+    host = endpoint.split("/api/projects/")[0]
+    return f"{host}/openai/v1"
+
+
+def _api_key() -> str:
+    """Foundry credential for the OpenAI-compatible endpoint.
+
+    Prefers FOUNDRY_API_KEY (account key, set via `az functionapp config
+    appsettings set` - never committed); falls back to an Entra bearer token
+    (requires 'Cognitive Services OpenAI User' on the app's identity, which
+    propagates slowly on this tenant).
+    """
+    key = os.environ.get("FOUNDRY_API_KEY", "").strip()
+    if key:
+        return key
+    global _TOKEN
+    import time
+
+    now = time.time()
+    if _TOKEN is None or _TOKEN[1] < now:
+        from azure.identity import DefaultAzureCredential
+
+        tk = DefaultAzureCredential().get_token("https://ai.azure.com/.default")
+        _TOKEN = (tk.token, tk.expires_on - 300)
+    return _TOKEN[0]
 
 
 def _agent():
     global _AGENT
     if _AGENT is None:
+        base = _foundry_base_url()
         s = Settings(
-            lower_vllm_base_url=os.environ.get(
-                "LOWER_BASE_URL", "https://my-foundry-resource.services.ai.azure.com/openai/v1"
-            ),
+            lower_vllm_base_url=base,
             lower_model=os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-5-mini"),
-            higher_vllm_base_url=os.environ.get(
-                "HIGHER_BASE_URL", "https://my-foundry-resource.services.ai.azure.com/openai/v1"
-            ),
+            higher_vllm_base_url=base,
             higher_model=os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-5-mini"),
+            vllm_api_key=_api_key(),  # key (app setting) or Entra bearer
             agent_enable_planning=False,
         )
         _AGENT = build_agent(s)
@@ -96,9 +131,13 @@ def agent_api(req: func.HttpRequest) -> func.HttpResponse:
     if not task:
         return _json({"error": "task is required"}, 400)
 
-    a = _agent()
-    final, route, _state = asyncio.run(a.run(task))
-    route_out = (
-        route.model_dump() if route is not None and hasattr(route, "model_dump") else None
-    )
-    return _json({"final": final, "route": route_out})
+    try:
+        a = _agent()
+        final, route, _state = asyncio.run(a.run(task))
+        route_out = (
+            route.model_dump() if route is not None and hasattr(route, "model_dump") else None
+        )
+        return _json({"final": final, "route": route_out})
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("run failed")
+        return _json({"error": f"{type(exc).__name__}: {exc}"}, 500)
