@@ -17,13 +17,13 @@ resource "azurerm_storage_account" "func" {
 }
 
 resource "azurerm_linux_function_app" "agent_api" {
-  name                = "${var.func_prefix}-agent-api"
-  resource_group_name = var.hub_resource_group
-  location            = var.func_location
-  service_plan_id     = azurerm_service_plan.func.id
+  name                       = "${var.func_prefix}-agent-api"
+  resource_group_name        = var.hub_resource_group
+  location                   = var.func_location
+  service_plan_id            = azurerm_service_plan.func.id
   storage_account_name       = azurerm_storage_account.func.name
   storage_account_access_key = azurerm_storage_account.func.primary_access_key
-  tags                = local.common_tags
+  tags                       = local.common_tags
 
   identity {
     type = "SystemAssigned"

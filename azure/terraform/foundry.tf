@@ -4,7 +4,7 @@ resource "azurerm_cognitive_account_project" "foundry_project" {
   name                 = var.project_name
   location             = var.location
   cognitive_account_id = data.azurerm_cognitive_account.hub.id
-  tags                 = local.common_tags
+  tags                 = local.shared_tags
 
   identity {
     type = "SystemAssigned"

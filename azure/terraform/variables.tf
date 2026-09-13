@@ -50,14 +50,27 @@ variable "func_prefix" {
 }
 
 variable "tags" {
-  type = map(string)
+  type    = map(string)
   default = {}
 }
 
 locals {
+  # Shared resources (project + model) carry IDENTICAL tags in all three
+  # stacks so concurrent applies never fight over tag values.
+  shared_tags = {
+    project      = "agent-lab"
+    repo         = "shared"
+    owner        = "ghanshyam17"
+    environment  = "learning"
+    managed-by   = "terraform"
+    cost-posture = "zero-idle"
+  }
   common_tags = merge(
     {
       project      = "agent-components"
+      repo         = "github.com/ghanshyam17/agent-components"
+      owner        = "ghanshyam17"
+      environment  = "learning"
       managed-by   = "terraform"
       cost-posture = "zero-idle"
     },

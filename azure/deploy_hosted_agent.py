@@ -26,7 +26,7 @@ from azure.ai.projects.models import (
 from azure.identity import DefaultAzureCredential
 
 HERE = Path(__file__).resolve().parent
-REPO_ROOT = HERE.parent.parent
+REPO_ROOT = HERE.parent
 SRC = (HERE / "hosted-agent" / "src").resolve()
 
 EXCLUDED = {".git", ".venv", "__pycache__", ".env", ".pytest_cache"}
@@ -92,7 +92,7 @@ def main() -> None:
                 cpu="0.5",
                 memory="1Gi",
                 code_configuration=CodeConfiguration(
-                    runtime="python_3_11",
+                    runtime="python_3_13",
                     entry_point=["python", "main.py"],
                     dependency_resolution=CodeDependencyResolution.REMOTE_BUILD,
                 ),
