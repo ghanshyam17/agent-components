@@ -234,7 +234,7 @@ def test_dataset_csv_with_json_expected(tmp_path: Path):
     p.write_text(
         "id,input,expected,metadata\n"
         '1,hi,hi,{}\n'
-        '2,call tools,"[{\\"name\\":\\"search\\"}]",{"topic":"tools"}\n',
+        '2,call tools,"[{""name"":""search""}]",{"topic":"tools"}\n',
         encoding="utf-8",
     )
     ds = Dataset.load_csv(p)

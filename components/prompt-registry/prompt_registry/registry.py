@@ -78,9 +78,18 @@ class PromptRegistry:
         return sorted(vs, key=_parse_version)
 
     # ---------------- rendering ----------------
-    def render(self, name: str, version: str | None = None, **vars: Any) -> str:
-        """Render a prompt; version=None selects the latest registered version."""
-        tpl = self.latest(name) if version is None else self.get(name, version)
+    def render(
+        self, prompt_name: str, version: str | None = None, **vars: Any
+    ) -> str:
+        """Render a prompt; version=None selects the latest registered version.
+
+        The prompt is identified by `prompt_name` (not `name`) because `name`
+        is a very common template *variable* and would otherwise collide::
+
+            reg.render("greet", name="Ada")            # latest version
+            reg.render("greet", version="1.0.0", name="Bo")
+        """
+        tpl = self.latest(prompt_name) if version is None else self.get(prompt_name, version)
         return tpl.render(**vars)
 
     # ---------------- A/B ----------------
@@ -198,7 +207,8 @@ class PromptRegistry:
 
 def meta_find_undeclared(template_src: str) -> set[str]:
     """Best-effort: return the Jinja2-undeclared variable names in a source string."""
-    from jinja2 import Environment
+    from jinja2 import Environment, meta
+
     env = Environment()
     try:
         ast = env.parse(template_src)

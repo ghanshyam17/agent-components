@@ -250,10 +250,19 @@ class CalculatorTool(Tool):
 
     async def run(self, expression: str) -> ToolResult:
         args = {"expression": expression}
+        # Parse in "eval" mode only: a single arithmetic expression. Statement
+        # input (an import, a chained call, `x = 1`, ...) is a SyntaxError here
+        # and is reported as unsupported rather than evaluated.
         try:
             tree = ast.parse(expression.strip(), mode="eval")
+        except SyntaxError:
+            return ToolResult.fail(self.name, args, "unsupported expression")
+        try:
             value = _safe_eval(tree)
-        except Exception as e:  # noqa: BLE001
+        except ValueError as e:
+            # `_safe_eval` rejects non-arithmetic nodes with this message.
+            return ToolResult.fail(self.name, args, str(e) or "unsupported expression")
+        except Exception as e:  # noqa: BLE001 - e.g. ZeroDivisionError
             return ToolResult.fail(self.name, args, f"bad expression: {e}")
         return ToolResult.ok(self.name, args, repr(value))
 

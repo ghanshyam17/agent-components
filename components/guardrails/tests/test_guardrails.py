@@ -157,8 +157,10 @@ def test_pipeline_merges_flags_and_carries_sanitized_text():
             KeywordBlocklist(keywords=["forbidden"]),
         ]
     )
-    # PII redaction runs first; sanitized text carries forward.
-    result = run(pipeline.check_input("email alice@example.com — nothing forbidden here"))
+    # PII redaction runs first; sanitized text carries forward. The
+    # blocklist term must not appear in this text: `KeywordBlocklist`
+    # does a substring match, so the word "forbidden" here would block.
+    result = run(pipeline.check_input("email alice@example.com — nothing blocked here"))
     assert result.allowed
     assert "pii" in result.flags
     assert "[REDACTED:email]" in result.sanitized

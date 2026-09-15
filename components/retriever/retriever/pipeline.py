@@ -69,13 +69,22 @@ class Retriever:
         query: str,
         top_k: int = 4,
         filter: dict[str, Any] | None = None,
+        min_score: float | None = None,
     ) -> list[Chunk]:
-        """Recall candidates from the vector memory and rerank to `top_k`."""
+        """Recall candidates from the vector memory and rerank to `top_k`.
+
+        `min_score` is a cosine floor applied during recall. It defaults to
+        ``-1.0`` ("no floor"), *not* to the `MemoryQuery` default of ``0.0``:
+        over-fetching exists to let the reranker reorder, and a 0.0 floor would
+        silently drop unrelated-but-better-than-nothing candidates before the
+        reranker ever sees them. Pass an explicit value to filter early.
+        """
         if top_k <= 0:
             return []
+        floor = -1.0 if min_score is None else min_score
         # Over-fetch so the reranker has room to reorder.
         hits = await self.vector_memory.search(
-            MemoryQuery(query=query, top_k=top_k * 3, filter=filter)
+            MemoryQuery(query=query, top_k=top_k * 3, filter=filter, min_score=floor)
         )
         if self.reranker is not None:
             records = [r for r, _ in hits]
