@@ -17,6 +17,7 @@ components-core = { workspace = true }
 agentic-router = { workspace = true }
 memory-store = { workspace = true }
 model-gateway = { workspace = true }
+toolkit = { workspace = true }
 agent-platform = { workspace = true }
 
 [dependency-groups]
@@ -29,4 +30,4 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["components"]
+testpaths = ["components", "projects", "platform"]

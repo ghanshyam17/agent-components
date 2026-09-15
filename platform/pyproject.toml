@@ -14,6 +14,9 @@ dependencies = [
     "azure-mgmt-redis>=14.0.0",
     "azure-mgmt-search>=9.0.0",
     "azure-mgmt-storage>=21.0.0",
+    "azure-mgmt-datafactory>=3.0.0",
+    "azure-ai-ml>=1.15.0",
+    "azure-mgmt-eventhub>=11.0.0",
     # --- Core ---
     "pydantic>=2.0",
     "pydantic-settings>=2.0",
@@ -26,11 +29,12 @@ dependencies = [
     "agentic-router",
     "memory-store",
     "model-gateway",
+    "toolkit",
 ]
 
 [build-system]
 requires = ["hatchling"]
-build-backend = "hatchling.backends"
+build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["platform"]
