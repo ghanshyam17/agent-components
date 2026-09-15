@@ -160,7 +160,13 @@ class EndpointRunner:
 
 # --------------------------------------------------------------------------- #
 class Gateway:
-    def __init__(self, config: GatewayConfig, *, client_factory: Any | None = None):
+    def __init__(
+        self,
+        config: GatewayConfig,
+        *,
+        client_factory: Any | None = None,
+        advanced: Any | None = None,
+    ):
         self.config = config
         self._runners: dict[str, EndpointRunner] = {
             e.name: EndpointRunner(e, client=client_factory(e) if client_factory else None)
@@ -169,6 +175,50 @@ class Gateway:
         self._groups: dict[str, Group] = {g.alias: g for g in config.groups}
         # round-robin cursor per group
         self._cursors: dict[str, itertools.cycle] = {}
+        # Advanced vLLM routing (prefix affinity / least_pending / speculative /
+        # adaptive_fallback). Built lazily on first advanced-strategy call so a
+        # purely classic config never pays for it. `advanced=False` disables it.
+        self._advanced: Any | None = advanced
+        self._advanced_enabled = advanced is not False
+        self._advanced_started = False
+        # Set by advanced dispatches so callers can trace the routing decision.
+        self.last_decision: Any | None = None
+
+    # -- advanced routing --------------------------------------------------- #
+    @property
+    def advanced(self) -> Any:
+        """The lazily-built `AdvancedVLLMRouter` for this gateway."""
+        if self._advanced is None:
+            from model_gateway.vllm.router import AdvancedVLLMRouter
+
+            self._advanced = AdvancedVLLMRouter(self.config)
+        return self._advanced
+
+    def uses_advanced_routing(self, alias: str) -> bool:
+        """Whether `alias` should be dispatched through the advanced router."""
+        if not self._advanced_enabled:
+            return False
+        group = self._groups.get(alias)
+        if group is None or not group.is_advanced:
+            return False
+        return True
+
+    async def start_advanced(self) -> None:
+        """Begin polling vLLM telemetry for advanced strategies (idempotent)."""
+        if self._advanced_started or not self._advanced_enabled:
+            return
+        await self.advanced.start()
+        self._advanced_started = True
+
+    async def stop_advanced(self) -> None:
+        if self._advanced_started:
+            await self.advanced.stop()
+            self._advanced_started = False
+
+    async def _dispatch_via_runner(self, name: str, messages, **kw) -> Any:
+        """Adapt an EndpointRunner to the advanced router's dispatch contract."""
+        runner = self._runners[name]
+        return await runner.chat(messages, **kw)
 
     # -- lookup ------------------------------------------------------------- #
     def _group(self, alias: str) -> Group:
@@ -209,6 +259,16 @@ class Gateway:
 
     # -- group-level call with fallback + retry ----------------------------- #
     async def call_chat(self, alias, messages, **kw):
+        # Advanced strategies delegate ordering (affinity / load / cloud
+        # diversion) to the vLLM router; the routing decision rides along in
+        # `self.last_decision` for tracing.
+        if self.uses_advanced_routing(alias):
+            result, decision = await self.advanced.dispatch(
+                alias, self._dispatch_via_runner, messages=messages, **kw
+            )
+            self.last_decision = decision
+            return result
+
         group = self._group(alias)
         runners = self._ordered(group)
         if not runners:
@@ -227,6 +287,40 @@ class Gateway:
         raise last_err
 
     async def call_stream(self, alias, messages, **kw) -> AsyncIterator[dict[str, Any]]:
+        # Advanced strategies choose the endpoint (affinity/load/fallback), then
+        # stream from it. Fallback-on-first-event still applies: if the chosen
+        # endpoint yields nothing, the remaining ordered candidates are tried.
+        if self.uses_advanced_routing(alias):
+            ordered, decision = self.advanced.order(alias, messages)
+            if not ordered:
+                raise RuntimeError(f"no enabled endpoints for group {alias!r}")
+            self.last_decision = decision
+            agen, first, chosen = None, None, None
+            for name in ordered:
+                try:
+                    candidate = self._runners[name].stream(messages, **kw)
+                    first = await candidate.__anext__()
+                    agen, chosen = candidate, name
+                    break
+                except StopAsyncIteration:
+                    return  # empty stream — treat as a normal empty completion
+                except Exception as e:  # noqa: BLE001 - try the next candidate
+                    decision.reason = f"{decision.reason}; {name} failed ({type(e).__name__})"
+                    continue
+            if agen is None or first is None or chosen is None:
+                raise RuntimeError(
+                    f"all endpoints failed for group {alias!r}: {decision.reason}"
+                )
+            decision.chosen = chosen
+            # Learn the prefix→replica mapping only once a replica has actually
+            # produced its first token.
+            if self.advanced.is_vllm_endpoint(chosen) and messages is not None:
+                self.advanced.affinity.observe(messages, chosen)
+            yield first
+            async for ev in agen:
+                yield ev
+            return
+
         group = self._group(alias)
         runners = self._ordered(group)
         if not runners:

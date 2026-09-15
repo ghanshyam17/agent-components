@@ -73,6 +73,55 @@ router falls back to its direct two-vLLM behavior (see the router README).
 Retries: `max_retries` extra attempts after the first, across the ordered
 endpoints, with `retry_backoff * 2^i` seconds between attempts.
 
+## Advanced vLLM routing
+
+For a cluster of **vLLM** instances the interesting signal is not just load but
+**KV-cache locality**. vLLM's PagedAttention caches computed prompt prefixes per
+instance; a request whose prefix a replica has already seen skips prefill for it
+and its time-to-first-token drops sharply. The `model_gateway.vllm` subpackage
+adds four strategies that route on that signal plus live telemetry:
+
+| Strategy | Behavior |
+|----------|----------|
+| `prefix_cache` | Prefer the replica most likely to hold the request's prefix (radix tree + consistent-hash ring), demoting any replica above `gpu_cache_saturation` |
+| `least_pending` | Smallest queue depth, then lowest KV-cache pressure, then fewest running requests |
+| `speculative` | Load-aware, plus a draft/target decision from measured token acceptance |
+| `adaptive_fallback` | Primaries while they have headroom; divert to `fallback_endpoints` (e.g. Azure AI Foundry) when every primary is saturated or errors |
+
+Declare vLLM metadata per endpoint and pick a strategy per group:
+
+```yaml
+endpoints:
+  - name: vllm-small
+    base_url: http://localhost:8001/v1
+    model: qwen2.5-1.5b-instruct
+    vllm: { kv_cache_capacity_gb: 24 }
+  - name: vllm-large
+    base_url: http://localhost:8002/v1
+    model: qwen2.5-32b-instruct
+    vllm:
+      draft_endpoint_ref: vllm-small   # speculative decoding partner
+      gpu_cache_saturation: 0.85
+      queue_saturation: 4
+groups:
+  - alias: lower
+    endpoints: [vllm-small]
+    strategy: prefix_cache
+  - alias: higher
+    endpoints: [vllm-large]
+    fallback_endpoints: [cloud-fallback-large]
+    strategy: adaptive_fallback
+```
+
+Advanced groups are dispatched through `AdvancedVLLMRouter` automatically from
+`Gateway.client(alias).chat()` / `.stream()`; the routing decision is exposed as
+`gateway.last_decision` for tracing. Start the telemetry poller with
+`await gateway.start_advanced()`. A config that uses only classic strategies
+never constructs the advanced machinery.
+
+See [`gateway.example.yaml`](gateway.example.yaml) for a complete config and
+`tests/test_vllm_router.py` for the routing/fallback behaviour.
+
 ## License
 
 MIT

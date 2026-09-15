@@ -13,17 +13,26 @@ endpoints:
     model: qwen2.5-1.5b-instruct
     rps: 20            # cap 20 req/s
     max_concurrency: 8
+    vllm:              # vLLM-specific routing metadata (optional)
+      kv_cache_capacity_gb: 24
   - name: vllm-small-replica
     base_url: http://localhost:8011/v1
     api_key: EMPTY
     model: qwen2.5-1.5b-instruct
     weight: 1
+    vllm: {}
   - name: vllm-large
     base_url: http://localhost:8002/v1
     api_key: EMPTY
     model: qwen2.5-32b-instruct
     rps: 5
     max_concurrency: 4
+    vllm:
+      kv_cache_capacity_gb: 80
+      # Speculative decoding: pair this target with a small draft model.
+      draft_endpoint_ref: vllm-small
+      gpu_cache_saturation: 0.85   # demote once the KV cache is this full
+      queue_saturation: 4          # divert to cloud once this many wait
   - name: cloud-fallback-large
     base_url: https://api.openai.com/v1
     api_key: ${OPENAI_API_KEY}
@@ -31,6 +40,7 @@ endpoints:
     weight: 1
 
 groups:
+  # --- classic strategies ---------------------------------------------------
   - alias: lower
     endpoints: [vllm-small, vllm-small-replica]
     strategy: round_robin     # round_robin | weighted | failover
@@ -39,5 +49,39 @@ groups:
   - alias: higher
     endpoints: [vllm-large, cloud-fallback-large]
     strategy: failover        # try vllm-large first, then cloud on failure
+    max_retries: 2
+    retry_backoff: 0.5
+
+  # --- advanced vLLM strategies (model_gateway.vllm.router) -----------------
+  # These read live vLLM /metrics + /health and route by KV-cache affinity
+  # and queue depth rather than by rotation.
+
+  # Prefer the replica most likely to hold the request's prefix, so
+  # PagedAttention prefix caching skips prefill and TTFT drops. Replicas at or
+  # above `gpu_cache_saturation` are demoted (kept as a last resort).
+  - alias: lower-affine
+    endpoints: [vllm-small, vllm-small-replica]
+    strategy: prefix_cache
+    affinity_prefix_tokens: 64    # leading tokens that define a cacheable prefix
+    max_retries: 2
+
+  # Pure load-aware: smallest queue depth, then lowest KV-cache pressure.
+  - alias: lower-least-pending
+    endpoints: [vllm-small, vllm-small-replica]
+    strategy: least_pending
+
+  # Draft/target pairing: the coordinator decides whether a draft model repays
+  # its cost, based on measured token acceptance.
+  - alias: higher-speculative
+    endpoints: [vllm-large]
+    strategy: speculative
+    max_retries: 1
+
+  # Adaptive: use the local cluster while it has headroom; divert to Azure AI
+  # Foundry when every primary is saturated or errors.
+  - alias: higher-adaptive
+    endpoints: [vllm-large]
+    fallback_endpoints: [cloud-fallback-large]
+    strategy: adaptive_fallback
     max_retries: 2
     retry_backoff: 0.5

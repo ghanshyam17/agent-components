@@ -15,13 +15,37 @@ from __future__ import annotations
 
 from model_gateway.config import GatewaySettings, get_config, load_config
 from model_gateway.gateway import Gateway, GatewayClient, EndpointRunner
-from model_gateway.models import Endpoint, GatewayConfig, Group
+from model_gateway.models import ADVANCED_STRATEGIES, Endpoint, GatewayConfig, Group, VLLMConfig
 
 __all__ = [
     "Gateway", "GatewayClient", "EndpointRunner",
-    "Endpoint", "Group", "GatewayConfig",
+    "Endpoint", "Group", "GatewayConfig", "VLLMConfig",
+    "ADVANCED_STRATEGIES",
     "GatewaySettings", "load_config", "get_config", "build_gateway",
+    "AdvancedVLLMRouter", "PrefixCacheAffinity", "VLLMMetricsCollector",
+    "SpeculativeDecodingCoordinator",
 ]
+
+
+def __getattr__(name: str):
+    """Lazily expose the vLLM subsystem (keeps the base import dependency-free)."""
+    if name == "AdvancedVLLMRouter":
+        from model_gateway.vllm.router import AdvancedVLLMRouter
+
+        return AdvancedVLLMRouter
+    if name == "PrefixCacheAffinity":
+        from model_gateway.vllm.cache_affinity import PrefixCacheAffinity
+
+        return PrefixCacheAffinity
+    if name == "VLLMMetricsCollector":
+        from model_gateway.vllm.metrics_collector import VLLMMetricsCollector
+
+        return VLLMMetricsCollector
+    if name == "SpeculativeDecodingCoordinator":
+        from model_gateway.vllm.speculative import SpeculativeDecodingCoordinator
+
+        return SpeculativeDecodingCoordinator
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def build_gateway(config: "GatewayConfig | None" = None) -> Gateway:
