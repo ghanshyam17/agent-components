@@ -24,8 +24,11 @@ logger = logging.getLogger(__name__)
 
 # ── FrenchCase tool imports ──────────────────────────────────────────────
 # These are the real implementations from app/agents/tools.py.
-# In the platform context (agent-components repo), FrenchCase is mounted
-# as a project; the import path resolves at runtime via sys.path.
+# `mount_frenchcase()` sets the two sys.path entries FrenchCase's layout needs.
+from projects.frenchcase.mount import mount_frenchcase as _mount
+
+_mount()
+
 try:
     from app.agents.tools import (
         repo_search,
@@ -36,23 +39,33 @@ try:
     )
     FRENCHCASE_TOOLS_AVAILABLE = True
 except ImportError:
-    FRENCHCASE_TOOLS_AVAILABLE = False
-    logger.warning("FrenchCase tools not importable — running in stub mode")
+    try:
+        from agents.tools import (  # type: ignore
+            repo_search,
+            get_conjugation,
+            grade_essay,
+            tts_pronounce,
+            load_lesson,
+        )
+        FRENCHCASE_TOOLS_AVAILABLE = True
+    except ImportError:
+        FRENCHCASE_TOOLS_AVAILABLE = False
+        logger.warning("FrenchCase tools not importable — running in stub mode")
 
-    async def repo_search(query: str, cefr: Optional[str] = None, section: Optional[str] = None, top_k: int = 5) -> dict:
-        return {"error": "FrenchCase not mounted", "query": query}
+        async def repo_search(query: str, cefr: Optional[str] = None, section: Optional[str] = None, top_k: int = 5) -> dict:
+            return {"error": "FrenchCase not mounted", "query": query}
 
-    async def get_conjugation(verb: str, tense: Optional[str] = None) -> dict:
-        return {"error": "FrenchCase not mounted", "verb": verb}
+        async def get_conjugation(verb: str, tense: Optional[str] = None) -> dict:
+            return {"error": "FrenchCase not mounted", "verb": verb}
 
-    async def grade_essay(text: str, section: str = "EE") -> dict:
-        return {"error": "FrenchCase not mounted"}
+        async def grade_essay(text: str, section: str = "EE") -> dict:
+            return {"error": "FrenchCase not mounted"}
 
-    async def tts_pronounce(text: str, voice: str = "fr-FR-DeniseNeural") -> dict:
-        return {"error": "FrenchCase not mounted"}
+        async def tts_pronounce(text: str, voice: str = "fr-FR-DeniseNeural") -> dict:
+            return {"error": "FrenchCase not mounted"}
 
-    async def load_lesson(lesson_id: str) -> dict:
-        return {"error": "FrenchCase not mounted", "lesson_id": lesson_id}
+        async def load_lesson(lesson_id: str) -> dict:
+            return {"error": "FrenchCase not mounted", "lesson_id": lesson_id}
 
 
 # ── Tool metadata ────────────────────────────────────────────────────────
