@@ -1,0 +1,150 @@
+apiVersion: agentcomponents/v1
+kind: ComponentGraph
+metadata:
+  name: {{ project_name }}-graph
+  project: {{ project_name }}
+  description: End-to-end Component Graph plugging Data Factory, AML Workflows, Vector RAG, and LangGraph/AutoGen Agents into Azure Foundry.
+spec:
+  data_plane:
+    auto_generate_agent_tools: true
+    batch_pipelines:
+      - name: ingest_enterprise_sales
+        source:
+          name: raw_sales_feed
+          source_type: azure-blob
+          path_or_table: /landing/sales/
+          format: json
+        sink:
+          name: bronze_sales_lake
+          source_type: adls-gen2
+          path_or_table: /bronze/sales/
+          format: delta
+        schedule_cron: "0 2 * * *"
+        incremental_watermark_column: updated_at
+    medallion_pipelines:
+      - name: sales_medallion
+        raw_landing_path: /landing/sales/
+        bronze_path: /bronze/sales/
+        silver_path: /silver/sales/
+        gold_path: /gold/sales_kpis/
+        format: delta
+        deduplication_keys: [transaction_id]
+        business_aggregations:
+          - name: daily_revenue_by_region
+            group_by: [region, transaction_date]
+            aggregates: { total_amount: sum }
+    rag_pipelines:
+      - name: enterprise_knowledge_rag
+        document_source_path: /knowledge/enterprise_docs/
+        chunking_strategy: semantic
+        chunk_size: 512
+        chunk_overlap: 50
+        embedding_model: text-embedding-3-large
+        embedding_dimensions: 3072
+        ai_search_index_name: enterprise-knowledge-index
+        hybrid_search: true
+    quality_gates:
+      - dataset_name: silver_sales
+        checks:
+          - column: transaction_id
+            check_type: unique_check
+            threshold: 1.0
+          - column: amount
+            check_type: null_check
+            threshold: 0.0
+        quarantine_sink:
+          name: quarantine_sales
+          source_type: adls-gen2
+          path_or_table: /quarantine/sales/
+          format: delta
+        fail_on_error: true
+
+  ml_plane:
+    auto_generate_agent_tools: true
+    command_jobs:
+      - name: train_sales_forecaster
+        command: python train.py --epochs 20
+        code_path: ./src/train.py
+        environment: azureml:scikit-learn-1.2:1
+        compute: aml-cluster-gpu
+    endpoints:
+      - name: sales-forecast-online
+        endpoint_type: online
+        auth_mode: key
+        traffic: { blue: 90, green: 10 }
+    models:
+      - name: enterprise-sales-forecaster
+        version: "1.0"
+        path: azureml://models/enterprise-sales-forecaster/versions/1
+        model_format: mlflow
+
+  tools_plane:
+    enable_data_tools: true
+    enable_vector_search_tools: true
+    enable_ml_inference_tools: true
+
+  agent_plane:
+    pattern: framework_router
+    model:
+      provider: azure-foundry
+      deployment_name: gpt-5-mini
+    framework_router:
+      strategy: intent_classifier
+      default_route: react
+      routes:
+        - intent: workflow
+          target_framework: langgraph
+        - intent: collaborate
+          target_framework: autogen
+    autogen:
+      mode: group_chat
+      max_rounds: 10
+      agents:
+        - name: data_analyst
+          role: Data Engineering & Lakehouse Specialist
+          system_message: Query Medallion Lakehouse and ADF data pipelines to extract business metrics.
+        - name: ml_advisor
+          role: Machine Learning & Forecasting Specialist
+          system_message: Invoke AML model endpoints to run forecasts and predictive scoring.
+        - name: coordinator
+          role: Project Coordinator
+          system_message: Synthesize analytics and recommendations for the user. When complete output TERMINATE.
+    langgraph:
+      graph_type: state_graph
+      entry_point: fetch_data
+      finish_point: end
+      nodes:
+        - name: fetch_data
+          description: Fetch latest Gold lakehouse tables and knowledge context
+        - name: run_inference
+          description: Score features with AML online endpoint
+        - name: verify_quality
+          description: Check quality gates and assertions
+      edges:
+        - from_node: fetch_data
+          to_node: run_inference
+        - from_node: run_inference
+          to_node: verify_quality
+      conditional_edges:
+        - source_node: verify_quality
+          condition_function: check_quality
+          route_map: { pass: end, needs_work: fetch_data }
+
+  runtime_chassis:
+    provider: azure-foundry
+    protocol: responses
+    sku: Standard
+    scale_to_zero: true
+
+  infrastructure_resources:
+    - type: azure/data-factory
+      name: adf-{{ project_name }}
+      managed_vnet: true
+    - type: azure/ml-workspace
+      name: aml-{{ project_name }}
+    - type: azure/ai-search
+      name: search-{{ project_name }}
+    - type: azure/storage-account
+      name: sa{{ project_name }}
+    - type: azure/redis-cache
+      name: redis-{{ project_name }}
