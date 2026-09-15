@@ -49,23 +49,66 @@ def _bootstrap_imports() -> None:
 
 _bootstrap_imports()
 
+import httpx  # noqa: E402
 from agentic_router.config import Settings  # noqa: E402
 from agentic_router.factory import build_agent  # noqa: E402
 
 _AGENT = None
 
 
+class _EntraAuth(httpx.Auth):
+    """Re-mints an Entra bearer token per request (tokens expire mid-session)."""
+
+    def __init__(self) -> None:
+        from azure.identity import DefaultAzureCredential
+
+        self._cred = DefaultAzureCredential()
+
+    def auth_flow(self, request):
+        tk = self._cred.get_token("https://ai.azure.com/.default")
+        request.headers["Authorization"] = f"Bearer {tk.token}"
+        yield request
+
+
+def _data_plane_base() -> str:
+    """OpenAI-compatible base URL from the project endpoint (custom host!)."""
+    endpoint = os.environ["FOUNDRY_PROJECT_ENDPOINT"].rstrip("/")
+    host = endpoint.split("/api/projects/")[0]
+    return f"{host}/openai/v1"
+
+
 def _agent():
     global _AGENT
     if _AGENT is None:
+        from openai import AsyncOpenAI
+
+        from agentic_router.clients import ClientRegistry
+        from agentic_router.models import ModelTier
+        from agentic_router.router import Router
+        from agentic_router.tools import build_default_registry
+        from memory_store import InMemorySessionStore
+
+        base = _data_plane_base()
+        model = os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-5-mini")
         s = Settings(
-            lower_vllm_base_url=os.environ.get("LOWER_BASE_URL", os.environ["FOUNDRY_PROJECT_ENDPOINT"]),
-            lower_model=os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-5-mini"),
-            higher_vllm_base_url=os.environ.get("HIGHER_BASE_URL", os.environ["FOUNDRY_PROJECT_ENDPOINT"]),
-            higher_model=os.environ.get("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-5-mini"),
-            agent_enable_planning=False,  # single-shot in the sandbox
+            lower_vllm_base_url=base,
+            lower_model=model,
+            higher_vllm_base_url=base,
+            higher_model=model,
+            vllm_api_key="entra",  # replaced below by the Entra-authed client
+            agent_enable_planning=False,
         )
-        _AGENT = build_agent(s)
+        agent = build_agent(s)
+        # Re-wire both tier clients with per-request Entra bearer auth
+        # (the settings-built clients use a static placeholder key).
+        for tier in (ModelTier.LOWER, ModelTier.HIGHER):
+            mc = agent.registry.get(tier)
+            mc.client = AsyncOpenAI(
+                base_url=base,
+                api_key="entra",
+                http_client=httpx.AsyncClient(auth=_EntraAuth(), timeout=120.0),
+            )
+        _AGENT = agent
     return _AGENT
 
 
