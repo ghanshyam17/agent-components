@@ -67,21 +67,21 @@ hits = await vm.search(MemoryQuery(query="...", top_k=4))
 
 ## Roadmap
 
-The full curated taxonomy (in priority order). `agentic-router` and
-`memory-store` are done; the rest are planned.
+The full curated taxonomy (in priority order). All 10 modular components and the enterprise Platform Engineering layer are completed.
 
-| # | Component | Role |
-|---|-----------|------|
-| 1 | agentic-router ✅ | Orchestration: routing + agentic loop + tools |
-| 2 | memory-store ✅ | Session + vector memory |
-| 3 | model-gateway | OpenAI-compatible façade over vLLM/TGI/Ollama/cloud with LB, fallback, rate limits |
-| 4 | toolkit | Sandboxed, validated, permissioned tool registry |
-| 5 | retriever | RAG: ingest → chunk → embed → vector store → hybrid search → rerank |
-| 6 | guardrails | Input/output filtering, PII redaction, injection detection, schema validation |
-| 7 | tracing | Structured spans + cost/latency accounting |
-| 8 | eval-harness | Dataset-driven eval + LLM-judge metrics |
-| 9 | prompt-registry | Versioned, templated prompts |
-| 10 | agent-ui | Reference chat UI (TS/React) |
+| # | Component | Role | Status |
+|---|-----------|------|--------|
+| 1 | `agentic-router` | Orchestration: routing + agentic loop + tools | ✅ Done |
+| 2 | `memory-store` | Session + vector memory | ✅ Done |
+| 3 | `model-gateway` | OpenAI-compatible façade over vLLM/TGI/Ollama/cloud with LB, fallback, rate limits | ✅ Done |
+| 4 | `toolkit` | Sandboxed, validated, permissioned tool registry | ✅ Done |
+| 5 | `retriever` | RAG: ingest → chunk → embed → vector store → hybrid search → rerank | ✅ Done |
+| 6 | `guardrails` | Input/output filtering, PII redaction, injection detection, schema validation | ✅ Done |
+| 7 | `tracing` | Structured spans + cost/latency accounting | ✅ Done |
+| 8 | `eval-harness` | Dataset-driven eval + LLM-judge metrics | ✅ Done |
+| 9 | `prompt-registry` | Versioned, templated prompts + hot-reload | ✅ Done |
+| 10 | `agent-ui` | Universal metadata-driven UI bridge (FastAPI + Fluent UI + SSE + Grafana + Power Automate) | ✅ Done |
+| 11 | `platform` | Enterprise Platform Engineering: ADF & AML orchestrator, 8 design patterns, Medallion Lakehouse | ✅ Done |
 
 ## License
 

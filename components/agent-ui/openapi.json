@@ -1,0 +1,130 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "Agent UI & Orchestrator Connector",
+    "description": "Power Automate Custom Connector for interacting with Agent Components and executing agent flows.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://{agent_host}",
+      "variables": {
+        "agent_host": {
+          "default": "localhost:8000",
+          "description": "The hostname or Azure Container App URL of the agent instance."
+        }
+      }
+    }
+  ],
+  "paths": {
+    "/api/config": {
+      "get": {
+        "summary": "Get Agent UI Configuration",
+        "description": "Retrieves the name, description, and starter prompts for the agent.",
+        "operationId": "GetAgentConfig",
+        "responses": {
+          "200": {
+            "description": "Successful configuration response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": { "type": "string" },
+                    "description": { "type": "string" },
+                    "starter_prompts": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    },
+                    "theme": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/graph": {
+      "get": {
+        "summary": "Get Component Graph Topology",
+        "description": "Retrieves the nodes and edges representing the agent architecture and data pipeline linkages.",
+        "operationId": "GetComponentGraph",
+        "responses": {
+          "200": {
+            "description": "Successful component graph response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "nodes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "string" },
+                          "name": { "type": "string" },
+                          "type": { "type": "string" },
+                          "status": { "type": "string" }
+                        }
+                      }
+                    },
+                    "edges": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "source": { "type": "string" },
+                          "target": { "type": "string" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "summary": "Send Message to Agent",
+        "description": "Sends a user message to the agent orchestrator and receives streamed or consolidated events.",
+        "operationId": "SendMessageToAgent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message"],
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "description": "The user prompt or instruction to execute."
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "description": "Unique session identifier for multi-turn state preservation."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Server-Sent Events stream or response payload",
+            "content": {
+              "text/event-stream": {
+                "schema": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

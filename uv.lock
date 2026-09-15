@@ -11,6 +11,7 @@ resolution-markers = [
 members = [
     "agent-components",
     "agent-platform",
+    "agent-ui",
     "agentic-router",
     "components-core",
     "eval-harness",
@@ -100,6 +101,34 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "toolkit", editable = "components/toolkit" },
 ]
+
+[[package]]
+name = "agent-ui"
+version = "0.1.0"
+source = { editable = "components/agent-ui" }
+dependencies = [
+    { name = "components-core" },
+    { name = "fastapi" },
+    { name = "jinja2" },
+    { name = "pydantic" },
+    { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+yaml = [
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "components-core", editable = "core" },
+    { name = "fastapi", specifier = ">=0.100.0" },
+    { name = "jinja2", specifier = ">=3.1" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "pyyaml", marker = "extra == 'yaml'", specifier = ">=6.0" },
+    { name = "uvicorn", specifier = ">=0.22.0" },
+]
+provides-extras = ["yaml"]
 
 [[package]]
 name = "agentic-router"

@@ -18,6 +18,12 @@ agentic-router = { workspace = true }
 memory-store = { workspace = true }
 model-gateway = { workspace = true }
 toolkit = { workspace = true }
+guardrails = { workspace = true }
+retriever = { workspace = true }
+tracing = { workspace = true }
+eval-harness = { workspace = true }
+prompt-registry = { workspace = true }
+agent-ui = { workspace = true }
 agent-platform = { workspace = true }
 
 [dependency-groups]

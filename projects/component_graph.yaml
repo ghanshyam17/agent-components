@@ -1,0 +1,114 @@
+apiVersion: agentcomponents/v1
+kind: ComponentGraph
+metadata:
+  name: agcomps-hosted-graph
+  project: agent-components
+  description: >-
+    Hosted component graph: Data Engineering planes (ADF, Medallion lakehouse,
+    Vector RAG), Azure Machine Learning workflows, the tool registry, and a
+    ReAct agent plane, hosted on Azure AI Foundry over the Responses protocol.
+spec:
+  data_plane:
+    auto_generate_agent_tools: true
+    batch_pipelines:
+      - name: ingest_curriculum_sources
+        source:
+          name: raw_curriculum_feed
+          source_type: azure-blob
+          path_or_table: /landing/curriculum/
+          format: json
+        sink:
+          name: bronze_curriculum_lake
+          source_type: adls-gen2
+          path_or_table: /bronze/curriculum/
+          format: delta
+        schedule_cron: "0 2 * * *"
+        incremental_watermark_column: updated_at
+    medallion_pipelines:
+      - name: curriculum_medallion
+        raw_landing_path: /landing/curriculum/
+        bronze_path: /bronze/curriculum/
+        silver_path: /silver/curriculum/
+        gold_path: /gold/learning_kpis/
+        format: delta
+        deduplication_keys: [document_id]
+        business_aggregations:
+          - name: coverage_by_level
+            group_by: [cefr_level, module]
+            aggregates: { chunk_count: sum }
+    rag_pipelines:
+      - name: knowledge_rag
+        document_source_path: /knowledge/documents/
+        chunking_strategy: semantic
+        chunk_size: 512
+        chunk_overlap: 50
+        embedding_model: text-embedding-3-large
+        embedding_dimensions: 3072
+        ai_search_index_name: agcomps-knowledge-index
+        hybrid_search: true
+    quality_gates:
+      - dataset_name: silver_curriculum
+        checks:
+          - column: document_id
+            check_type: unique_check
+            threshold: 1.0
+          - column: content
+            check_type: null_check
+            threshold: 0.0
+        quarantine_sink:
+          name: quarantine_curriculum
+          source_type: adls-gen2
+          path_or_table: /quarantine/curriculum/
+          format: delta
+        fail_on_error: true
+
+  ml_plane:
+    auto_generate_agent_tools: true
+    command_jobs:
+      - name: train_scoring_model
+        command: python train.py --epochs 10
+        code_path: ./src/train.py
+        environment: azureml:scikit-learn-1.2:1
+        compute: aml-cluster-cpu
+    endpoints:
+      - name: scoring-online
+        endpoint_type: online
+        auth_mode: key
+        traffic: { blue: 100, green: 0 }
+    models:
+      - name: agcomps-scorer
+        version: "1.0"
+        path: azureml://models/agcomps-scorer/versions/1
+        model_format: mlflow
+
+  tools_plane:
+    enable_data_tools: true
+    enable_vector_search_tools: true
+    enable_ml_inference_tools: true
+
+  agent_plane:
+    # ReAct keeps the hosted sandbox free of LangGraph/AutoGen runtime deps.
+    pattern: react
+    model:
+      provider: azure-foundry
+      deployment_name: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+    memory:
+      short_term: session
+    infrastructure:
+      compute_target: foundry-hosted
+
+  runtime_chassis:
+    provider: azure-foundry
+    protocol: responses
+    sku: Standard
+    scale_to_zero: true
+
+  infrastructure_resources:
+    - type: azure/data-factory
+      name: adf-agcomps
+    - type: azure/ml-workspace
+      name: aml-agcomps
+    - type: azure/ai-search
+      name: search-agcomps
+    - type: azure/storage-account
+      name: saagcomps

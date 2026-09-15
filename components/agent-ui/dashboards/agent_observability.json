@@ -1,0 +1,131 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "title": "Total Chat Requests",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(http_requests_total{handler=\"/api/chat\"})",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "title": "P95 Response Latency",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{handler=\"/api/chat\"}[5m])) by (le))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "title": "Active SSE Streams",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(agent_active_sse_connections)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "title": "Total Tokens Consumed",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum(agent_token_usage_total)",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 5,
+      "title": "Request Rate & Latency Trends",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{handler=\"/api/chat\"}[1m])",
+          "legendFormat": "RPS",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.90, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P90 Latency (s)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 6,
+      "title": "Tool Execution Heatmap & Errors",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(agent_tool_executions_total{status=\"success\"}[5m])) by (tool_name)",
+          "legendFormat": "Tool: {{tool_name}} (Success)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(agent_tool_executions_total{status=\"error\"}[5m])) by (tool_name)",
+          "legendFormat": "Tool: {{tool_name}} (Failed)",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "id": 7,
+      "title": "Token Burn by Model & Gateway Provider",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum(rate(agent_token_usage_total{type=\"prompt\"}[5m])) by (model)",
+          "legendFormat": "Prompt Tokens - {{model}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(agent_token_usage_total{type=\"completion\"}[5m])) by (model)",
+          "legendFormat": "Completion Tokens - {{model}}",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 38,
+  "style": "dark",
+  "tags": ["azure", "agent-components", "observability", "grafana"],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "title": "Agent UI & Component Graph Observability",
+  "uid": "agent-ui-observability"
+}
