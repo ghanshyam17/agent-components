@@ -39,9 +39,18 @@
 | `platform/scaffold/` | **`azd ai agent init`** pattern | CLI project scaffolding |
 | `platform/engineering/loop` | Loop controls + telemetry | Circuit breakers, guardrails |
 | `platform/engineering/harness` | **Foundry evaluations** (YAML-driven) | Wraps eval-harness component |
-| `platform/engineering/data_infra` | **Azure Data Factory** / **Synapse Spark** | Data pipeline provisioning |
-| `platform/engineering/ai_infra` | **Model catalog** / **Fine-tuning** / **A/B testing** | Model lifecycle management |
+| `platform/engineering/data/adf` | **Azure Data Factory** | Workflows, Copy activities, Data Flows, Triggers, Linked Services |
+| `platform/engineering/data/pipelines/batch` | **Medallion Lakehouse** | Bronze/Silver/Gold Delta Lake on ADLS Gen2 |
+| `platform/engineering/data/pipelines/vector_rag` | **Azure AI Search Vector RAG** | Document chunking, text-embedding-3, hybrid indexing |
+| `platform/engineering/data/pipelines/streaming` | **Azure Event Hubs / Stream Analytics** | Real-time event-driven streaming ingestion |
+| `platform/engineering/data/pipelines/quality` | **Azure Purview / Data Quality Gates** | Schema enforcement, assertions, quarantine dead-letter |
+| `platform/engineering/data/tools` | **Agent Data & ML Tool Bridges** | Lakehouse query, ADF triggers, AML inference, RAG search |
+| `platform/engineering/aml/` | **Azure Machine Learning v2** | Command jobs, Pipeline DAGs, Sweep hyperparameter tuning |
+| `platform/engineering/aml/model_registry` | **Azure ML Model Registry & Endpoints** | MLflow tracking, online managed endpoints, traffic split |
+| `platform/schema/component_graph` | **Component Graph Declarative Spec** | End-to-end multi-level pipeline-agent-infra definition |
+| `platform/engineering/graph_orchestrator` | **Foundry SDK Hosted Component Graph** | Responses protocol execution of Data + ML + Agent graph |
 
 Shared platform resources: one hub (`my-foundry-resource`, S0), one project
 (`agent-lab`), one model deployment (`gpt-5-mini`) - imported into Terraform,
 referenced across all sibling repos.
+
