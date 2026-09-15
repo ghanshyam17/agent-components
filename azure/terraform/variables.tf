@@ -41,7 +41,7 @@ variable "model_sku" {
 
 variable "model_capacity" {
   type    = number
-  default = 1
+  default = 10
 }
 
 variable "func_prefix" {
