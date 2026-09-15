@@ -1,0 +1,15 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: automation
+  project: {{ project_name }}
+spec:
+  pattern: react
+  model:
+    provider: openai
+    deployment_name: gpt-4
+  tools:
+    custom:
+      - name: sample_tool
+        source_file: tools/sample_tool.py
+        function_name: run_sample

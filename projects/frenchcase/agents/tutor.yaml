@@ -1,0 +1,61 @@
+# TEF RAG Tutor — the main chat agent
+# Pattern: react (Reason → Act → Observe loop with tools)
+# Maps to: app/core/llm.py chat_stream() + app/agents/graph.py LangGraph
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: tef-tutor
+  project: frenchcase
+  description: "Bilingual TEF tutor — RAG-grounded answers with English references"
+  tags:
+    role: "tutor"
+    source: "app/core/llm.py"
+    cefr: "A1-C2"
+spec:
+  pattern: react
+
+  model:
+    provider: azure-foundry
+    deployment_name: gpt-4o-mini
+    tier_strategy:
+      lower:
+        deployment: gpt-4o-mini
+        alias: lower              # simple Q&A, vocab lookup → fast model
+      higher:
+        deployment: gpt-4o
+        alias: higher             # grammar explanation, essay feedback → capable model
+
+  tools:
+    builtin: []
+    custom:
+      - name: repo_search
+        source_file: ./tools/learncase_tools.py
+        function_name: repo_search         # RAG search over 2,131 catalog entries
+      - name: get_conjugation
+        source_file: ./tools/learncase_tools.py
+        function_name: get_conjugation     # verb conjugation lookup
+      - name: tts_pronounce
+        source_file: ./tools/learncase_tools.py
+        function_name: tts_pronounce       # edge-tts audio generation
+      - name: load_lesson
+        source_file: ./tools/learncase_tools.py
+        function_name: load_lesson         # load a LearnCase by ID
+
+  memory:
+    session:
+      backend: in-memory          # SessionStore → app/data/sessions.json (disk-persisted)
+      ttl: 86400                  # 24h
+    vector:
+      backend: ai-search          # ChromaDB local (dev) → AI Search (prod)
+      index_name: tef-learning    # 2,054 chunks, bge-m3 embeddings
+
+  guardrails:
+    input_filters: []
+    output_filters: []
+
+  infrastructure:
+    compute_target: functions      # serverless — $0 idle in dev
+    sku: consumption
+    scaling:
+      min: 0
+      max: 5

@@ -1,0 +1,80 @@
+# LearnCase Generator Team — 6-agent constructive discussion (supervisor pattern)
+# Maps to: app/core/multi_agent_learncase.py + app/core/autogen_orchestrator.py
+#
+# The 6 agents discuss a topic and produce a validated LearnCase JSON:
+#   grammar → podcast → content → exercise → quality-supervisor → json-mapper
+#
+# In FrenchCase this runs as a sequential pipeline with the supervisor
+# checking quality at each stage. The platform's supervisor pattern
+# formalizes this as plan_and_delegate.
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: learncase-team
+  project: frenchcase
+  description: "6-agent constructive discussion producing TEF-grade LearnCase JSON"
+  tags:
+    role: "content-generation"
+    source: "app/core/multi_agent_learncase.py"
+    agents: "6"
+spec:
+  pattern: supervisor
+
+  supervisor:
+    strategy: plan_and_delegate
+    max_rounds: 6                   # one round per agent
+    workers:
+      - agent_ref: ./workers/grammar-agent.yaml
+        role: "Extracts grammar points from the topic/context"
+        capabilities: ["grammar-analysis", "cefr-mapping"]
+      - agent_ref: ./workers/podcast-agent.yaml
+        role: "Finds relevant podcast episodes for context enrichment"
+        capabilities: ["podcast-search", "audio-context"]
+      - agent_ref: ./workers/content-agent.yaml
+        role: "Reads markdown files from the repo for substance"
+        capabilities: ["rag-retrieval", "content-synthesis"]
+      - agent_ref: ./workers/exercise-agent.yaml
+        role: "Designs interactive exercises from the content"
+        capabilities: ["exercise-design", "tef-format"]
+      - agent_ref: ./workers/quality-supervisor.yaml
+        role: "Reviews output, ensures TEF-grade quality, requests revisions"
+        capabilities: ["quality-review", "revision-request"]
+      - agent_ref: ./workers/json-mapper.yaml
+        role: "Maps discussion output to LearnCase JSON schema"
+        capabilities: ["json-schema", "validation"]
+
+  model:
+    provider: azure-foundry
+    deployment_name: gpt-4o-mini
+    tier_strategy:
+      lower:
+        deployment: gpt-4o-mini
+        alias: lower               # workers 1-4 use fast model
+      higher:
+        deployment: gpt-4o
+        alias: higher              # quality-supervisor + json-mapper use capable model
+
+  tools:
+    builtin: []
+    custom:
+      - name: repo_search
+        source_file: ./tools/learncase_tools.py
+        function_name: repo_search
+      - name: load_lesson
+        source_file: ./tools/learncase_tools.py
+        function_name: load_lesson
+
+  memory:
+    session:
+      backend: in-memory
+      ttl: 3600
+    vector:
+      backend: ai-search
+      index_name: tef-learning
+
+  infrastructure:
+    compute_target: functions
+    sku: consumption
+    scaling:
+      min: 0
+      max: 3

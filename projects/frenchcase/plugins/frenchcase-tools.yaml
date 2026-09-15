@@ -1,0 +1,54 @@
+# FrenchCase tools — exposed to the platform tool registry
+# Maps to: app/agents/tools.py (5 tools)
+apiVersion: agentcomponents/v1
+kind: Plugin
+metadata:
+  name: frenchcase-tools
+  description: "5 RAG and learning tools from FrenchCase's agent layer"
+spec:
+  tools:
+    # Tool 1: RAG search over 2,131 catalog entries + 2,054 vector chunks
+    - name: repo_search
+      type: rag-search
+      source: app/agents/tools.py::repo_search
+      description: "Search the TEF learning corpus (2,131 catalog entries, 2,054 vector chunks)"
+      parameters:
+        query: { type: string, required: true, description: "Search query" }
+        cefr: { type: string, required: false, default: null, enum: ["A1","A2","B1","B2","C1","C2"] }
+        section: { type: string, required: false, default: null, enum: ["CO","CE","EE","EO","GRM","VOC","PHO"] }
+        top_k: { type: int, required: false, default: 5 }
+
+    # Tool 2: Verb conjugation lookup (12 tense pages, all verb groups)
+    - name: get_conjugation
+      type: reference-lookup
+      source: app/agents/tools.py::get_conjugation
+      description: "Get full conjugation table for a French verb across all tenses"
+      parameters:
+        verb: { type: string, required: true, description: "Infinitive form (e.g., aller)" }
+        tense: { type: string, required: false, default: null }
+
+    # Tool 3: TEF writing grader (4-criteria rubric, /36)
+    - name: grade_essay
+      type: assessment
+      source: app/agents/tools.py::grade_essay
+      description: "Grade a TEF Expression Écrite essay on the 4-criteria rubric (/36)"
+      parameters:
+        text: { type: string, required: true, description: "The essay text" }
+        section: { type: string, required: false, default: "EE" }
+
+    # Tool 4: TTS pronunciation (edge-tts, French voices)
+    - name: tts_pronounce
+      type: audio
+      source: app/agents/tools.py::tts_pronounce
+      description: "Generate French pronunciation audio via edge-tts"
+      parameters:
+        text: { type: string, required: true, description: "French text to pronounce" }
+        voice: { type: string, required: false, default: "fr-FR-DeniseNeural" }
+
+    # Tool 5: Load a LearnCase by ID (1,816 available)
+    - name: load_lesson
+      type: content-loader
+      source: app/agents/tools.py::load_lesson
+      description: "Load a specific LearnCase by its catalog ID"
+      parameters:
+        lesson_id: { type: string, required: true, description: "LearnCase catalog ID" }

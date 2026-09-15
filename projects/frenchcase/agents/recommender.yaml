@@ -1,0 +1,57 @@
+# Adaptive Recommender — 6-signal recommendation engine (sequential pattern)
+# Maps to: app/core/case_recommender.py
+#
+# Signals: bandit (exploit/explore) + graph (prerequisite) + spacing (FSRS-2)
+#          + RRF (reciprocal rank fusion) + round-robin (type diversity) + clicks
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: tef-recommender
+  project: frenchcase
+  description: "6-signal adaptive recommendation — bandit + graph + FSRS-2 + RRF + round-robin + clicks"
+  tags:
+    role: "recommendation"
+    source: "app/core/case_recommender.py"
+spec:
+  pattern: sequential
+
+  sequential:
+    stages:
+      - "./stages/load-learner-state.yaml"   # case_state.json + case_tracker + graph_engine
+      - "./stages/compute-signals.yaml"       # 6 signals in parallel
+      - "./stages/rrf-fusion.yaml"            # reciprocal rank fusion across signals
+      - "./stages/round-robin.yaml"           # type diversity (prevent vocab_flash domination)
+      - "./stages/present.yaml"               # top-N recommendations with reasoning
+
+  model:
+    provider: azure-foundry
+    deployment_name: gpt-4o-mini
+    tier_strategy:
+      lower:
+        deployment: gpt-4o-mini
+        alias: lower               # recommendation is algorithmic, not LLM-heavy
+      higher:
+        deployment: gpt-4o
+        alias: higher
+
+  tools:
+    builtin: []
+    custom:
+      - name: repo_search
+        source_file: ./tools/learncase_tools.py
+        function_name: repo_search
+
+  memory:
+    session:
+      backend: in-memory
+      ttl: 3600
+    vector:
+      backend: ai-search
+      index_name: tef-learning
+
+  infrastructure:
+    compute_target: functions
+    sku: consumption
+    scaling:
+      min: 0
+      max: 3

@@ -1,0 +1,39 @@
+# Compute infrastructure — 3 deployment routes (Functions / Container Apps / App Service)
+# Maps to FrenchCase's existing infra/terraform/ (23 resources across 15 services)
+apiVersion: agentcomponents/v1
+kind: Infrastructure
+metadata:
+  name: frenchcase-compute
+  tags:
+    layer: "compute"
+spec:
+  resources:
+    # ── Route 1: Azure Functions (serverless, $0 idle) ───────────────────
+    # 10 HTTP-triggered functions: health, chat, learncase, recommend,
+    # exam, news-ingest, autogen-orchestrate, dataverse-sync, router-status
+    - type: azure/functions
+      name: frenchcase-fn
+      sku: consumption
+      runtime: python-3.12
+      scaling:
+        min: 0
+        max: 200
+
+    # ── Route 2: Azure Container Apps (auto-scaling, $15-30/mo) ──────────
+    # 2 containers: backend (FastAPI) + frontend (Next.js standalone)
+    - type: azure/container-apps-env
+      name: frenchcase-aca-env
+
+    # ── Route 3: Azure App Service (always-on, $13/mo B1) ────────────────
+    # Backend: FastAPI on Python 3.12
+    # Frontend: Next.js on Vercel (free tier)
+    - type: azure/app-service-plan
+      name: frenchcase-asp
+      sku: B1
+      worker_count: 1
+
+    # ── Application Insights (monitoring) ────────────────────────────────
+    # Traces: request latency, error rate, model routing decisions
+    - type: azure/application-insights
+      name: frenchcase-ai
+      sku: standard

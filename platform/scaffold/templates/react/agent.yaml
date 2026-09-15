@@ -1,0 +1,15 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: {{ project_name }}-agent
+  project: {{ project_name }}
+  description: A ReAct agent with web search and calculator.
+spec:
+  pattern: react
+  model:
+    provider: openai
+    deployment_name: gpt-4
+  tools:
+    builtin:
+      - web_search
+      - calculator

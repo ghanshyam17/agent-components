@@ -1,0 +1,50 @@
+# Writing Grader — TEF Expression Écrite rubric scorer
+# Pattern: react (single-pass structured output)
+# Maps to: app/core/llm.py grade_text() — 4-criteria rubric (/36), JSON-forced output
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: tef-grader
+  project: frenchcase
+  description: "Grades TEF writing on 4-criteria rubric (task/coherence/vocab/grammar, /36)"
+  tags:
+    role: "grader"
+    source: "app/core/llm.py::grade_text"
+spec:
+  pattern: react
+
+  model:
+    provider: azure-foundry
+    deployment_name: gpt-4o        # grading needs the capable model
+    tier_strategy:
+      lower:
+        deployment: gpt-4o-mini
+        alias: lower
+      higher:
+        deployment: gpt-4o
+        alias: higher              # always use higher for grading
+
+  tools:
+    builtin: []
+    custom:
+      - name: grade_essay
+        source_file: ./tools/learncase_tools.py
+        function_name: grade_essay     # 4-criteria rubric, returns JSON
+
+  memory:
+    session:
+      backend: in-memory
+      ttl: 3600
+    vector: null                    # grading is zero-shot, no RAG needed
+
+  guardrails:
+    input_filters: []
+    output_filters:
+      - hallucination_check         # rubric scores must trace to the essay text
+
+  infrastructure:
+    compute_target: functions
+    sku: consumption
+    scaling:
+      min: 0
+      max: 3

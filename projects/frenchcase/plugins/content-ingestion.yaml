@@ -1,0 +1,59 @@
+# Content ingestion pipeline — FrenchCase's data engineering layer
+# Maps to: scripts/seed_cases.py (17 parsers) + scripts/ingest_news.py +
+#          scripts/seed_coffee_break_full.py + Hermes cron bots
+apiVersion: agentcomponents/v1
+kind: Plugin
+metadata:
+  name: content-ingestion
+  description: "Content ingestion pipeline: podcast, blog, news, TPF PDF parsers"
+spec:
+  tools:
+    # Parser 1: Coffee Break French RSS → 323 episodes
+    - name: ingest_coffee_break
+      type: rss-parser
+      source: scripts/seed_coffee_break_full.py
+      schedule: "daily 06:00"           # Hermes cron bot
+      description: "Scrape Coffee Break French Acast RSS feed → lesson data"
+      output: app/data/coffee_break_lessons.json
+
+    # Parser 2: French news sites (12 sources) → 278 articles
+    - name: ingest_news
+      type: web-scraper
+      source: scripts/ingest_news.py
+      schedule: "daily 07:00"           # Hermes cron bot
+      description: "Scrape 12 French news sources (psychology, tech, AI, lifestyle)"
+      sources:
+        - lemonde.fr
+        - lefigaro.fr
+        - lemonde-science.fr
+        - numerama.com
+        - leprogrès.fr
+      output: 09_news_articles/
+
+    # Parser 3: Case bank seeder (17 parsers → 2,475 cases, 11 types)
+    - name: seed_cases
+      type: content-parser
+      source: scripts/seed_cases.py
+      schedule: "on-demand"
+      description: "Parse 121 repository modules → 2,475 LearnCases across 11 types"
+      output: app/data/cases.json
+
+    # Parser 4: Blog ingestion (4 blogs)
+    - name: ingest_blogs
+      type: rss-parser
+      source: scripts/ingest_blogs.py
+      schedule: "daily 07:00"           # Hermes cron bot
+      description: "Scrape 4 French learning blogs"
+      output: 09_news_articles/blogs/
+
+  # ── Data quality gate ──────────────────────────────────────────────────
+  # Maps to: app/core/content_syncer.py (4-axis quality gate)
+  quality_gate:
+    axes:
+      - substance        # >= 150 words, no stubs
+      - correctness      # French grammar verified
+      - tef_relevance    # maps to a TEF section
+      - novelty          # not duplicate of existing content
+    threshold: 3                     # must pass 3 of 4 axes
+    on_pass: write_to_repo           # auto-write .md with frontmatter
+    on_fail: discard

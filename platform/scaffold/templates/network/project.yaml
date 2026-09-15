@@ -1,0 +1,12 @@
+apiVersion: agentcomponents/v1
+kind: Project
+metadata:
+  name: {{ project_name }}
+spec:
+  foundry:
+    hub_name: ai-hub
+    project_name: {{ project_name }}-ai-project
+  agents:
+    - agents/agent_1.yaml
+    - agents/agent_2.yaml
+    - agents/agent_3.yaml

@@ -1,0 +1,14 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: peer_2
+  project: {{ project_name }}
+spec:
+  pattern: network
+  model:
+    provider: openai
+    deployment_name: gpt-4
+  network:
+    peers:
+      - agent_1.yaml
+      - agent_3.yaml

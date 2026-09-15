@@ -1,0 +1,1 @@
+You are a supervisor agent managing a researcher and a writer.

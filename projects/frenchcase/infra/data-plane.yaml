@@ -1,0 +1,49 @@
+# Data-plane infrastructure — content + learner state
+# Maps to FrenchCase's content corpus, vector index, learner state, and file storage
+apiVersion: agentcomponents/v1
+kind: Infrastructure
+metadata:
+  name: frenchcase-data-plane
+  tags:
+    layer: "data"
+spec:
+  resources:
+    # ── Vector search (RAG) ──────────────────────────────────────────────
+    # Dev: ChromaDB local (2,054 chunks, bge-m3 1024-dim)
+    # Prod: Azure AI Search (managed, scalable)
+    - type: azure/ai-search
+      name: tef-search
+      sku: standard
+      replica_count: 1
+      # Index: tef-learning — 2,054 chunks across 11 numbered modules
+      # Embedding: bge-m3 (1024-dim), cosine similarity
+      # Metadata filters: cefr, tef_section, skill
+
+    # ── Learner state (SQL) ──────────────────────────────────────────────
+    # Dev: SQLite (app/data/*.json)
+    # Prod: Azure SQL Serverless
+    # Tables: sessions, case_state, case_tracker, doc_tracking, click_events, gamification
+    - type: azure/sql-database
+      name: tef-learner-db
+      sku: serverless
+
+    # ── Content storage (Blob) ───────────────────────────────────────────
+    # Generated LearnCases, podcast audio, user uploads
+    # Containers: learncases, audio, uploads, sandbox-artifacts
+    - type: azure/storage-account
+      name: frenchcasestorage
+      account_type: Standard_LRS
+      containers:
+        - learncases              # 1,816 generated HTML LearnCases
+        - audio                   # edge-tts output + podcast audio
+        - uploads                 # user-uploaded text for grading
+        - sandbox-artifacts       # (future) code interpreter outputs
+
+    # ── Session cache (Redis) ─────────────────────────────────────────────
+    # Dev: in-memory dict
+    # Prod: Azure Cache for Redis
+    # Keys: session:{id} → SessionState (messages + plan + metadata)
+    - type: azure/redis-cache
+      name: tef-session-cache
+      sku: Basic_C0
+      capacity: 1

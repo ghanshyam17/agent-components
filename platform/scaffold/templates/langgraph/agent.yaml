@@ -1,0 +1,34 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: {{ project_name }}-langgraph
+  project: {{ project_name }}
+  description: LangGraph cyclical state machine and workflow pattern.
+spec:
+  pattern: langgraph
+  model:
+    provider: azure-foundry
+    deployment_name: gpt-5-mini
+  langgraph:
+    graph_type: state_graph
+    entry_point: draft
+    finish_point: end
+    checkpointer: memory
+    nodes:
+      - name: draft
+        description: Generate initial response or plan
+      - name: verify
+        description: Run validation rules and guardrails
+      - name: refine
+        description: Refine response based on validation feedback
+    edges:
+      - from_node: draft
+        to_node: verify
+      - from_node: refine
+        to_node: verify
+    conditional_edges:
+      - source_node: verify
+        condition_function: check_quality
+        route_map:
+          pass: end
+          needs_work: refine

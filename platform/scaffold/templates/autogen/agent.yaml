@@ -1,0 +1,28 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: {{ project_name }}-autogen
+  project: {{ project_name }}
+  description: AutoGen multi-agent collaborative group chat pattern.
+spec:
+  pattern: autogen
+  model:
+    provider: azure-foundry
+    deployment_name: gpt-5-mini
+  autogen:
+    mode: group_chat
+    max_rounds: 10
+    speaker_selection_method: auto
+    termination_keyword: TERMINATE
+    agents:
+      - name: coder
+        role: Senior Software Engineer
+        system_message: You write clean, correct, executable Python code to solve the user's task.
+        code_execution: true
+      - name: critic
+        role: Code Reviewer & Critic
+        system_message: You review code and proposals for bugs, edge cases, and security vulnerabilities. Suggest improvements or approve with TERMINATE.
+      - name: user_proxy
+        role: User Proxy Executor
+        system_message: Execute code and relay observations back to the group chat.
+        is_user_proxy: true

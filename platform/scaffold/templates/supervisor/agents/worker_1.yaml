@@ -1,0 +1,13 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: researcher
+  project: {{ project_name }}
+spec:
+  pattern: react
+  model:
+    provider: openai
+    deployment_name: gpt-4
+  tools:
+    builtin:
+      - web_search

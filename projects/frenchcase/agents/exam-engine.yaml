@@ -1,0 +1,55 @@
+# Exam Engine — timed TEF mock exam orchestrator (sequential pattern)
+# Maps to: app/core/exam_engine.py
+#
+# Flow: load_exam → start_session(timed) → present_questions → submit → grade → score_map(CEFR/CLB)
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: exam-engine
+  project: frenchcase
+  description: "Timed TEF mock exam — 14 exams, 40 Q each, CLB/NCLC score mapping"
+  tags:
+    role: "assessment"
+    source: "app/core/exam_engine.py"
+spec:
+  pattern: sequential
+
+  sequential:
+    stages:
+      - "./stages/load-exam.yaml"        # parse TEF test content → 14 exams
+      - "./stages/start-session.yaml"    # create timed session (CO 40min, CE 60min, EE 60min)
+      - "./stages/present-questions.yaml" # render passage + MCQ / free-text
+      - "./stages/submit-grade.yaml"     # answer-key grading → % correct
+      - "./stages/score-map.yaml"        # % → TEF points → CEFR → CLB/NCLC
+
+  model:
+    provider: azure-foundry
+    deployment_name: gpt-4o-mini
+    tier_strategy:
+      lower:
+        deployment: gpt-4o-mini
+        alias: lower
+      higher:
+        deployment: gpt-4o
+        alias: higher
+
+  tools:
+    builtin: []
+    custom: []                          # exam engine is deterministic, no LLM tools needed
+
+  memory:
+    session:
+      backend: in-memory
+      ttl: 7200                         # 2h — enough for a full exam
+    vector: null
+
+  guardrails:
+    input_filters: []
+    output_filters: []
+
+  infrastructure:
+    compute_target: functions
+    sku: consumption
+    scaling:
+      min: 0
+      max: 5

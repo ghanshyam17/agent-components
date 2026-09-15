@@ -1,0 +1,28 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: json-mapper
+  project: frenchcase
+  description: "Maps discussion output to LearnCase JSON schema"
+spec:
+  pattern: react
+  model:
+    provider: azure-foundry
+    deployment_name: gpt-4o          # mapper needs capable model for schema adherence
+    tier_strategy:
+      lower: { deployment: gpt-4o-mini, alias: lower }
+      higher: { deployment: gpt-4o, alias: higher }
+  tools:
+    builtin: []
+    custom: []
+  memory:
+    session: { backend: in-memory, ttl: 3600 }
+    vector: null
+  guardrails:
+    input_filters: []
+    output_filters:
+      - hallucination_check
+  infrastructure:
+    compute_target: functions
+    sku: consumption
+    scaling: { min: 0, max: 2 }

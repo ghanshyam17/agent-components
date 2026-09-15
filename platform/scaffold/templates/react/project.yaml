@@ -1,0 +1,13 @@
+apiVersion: agentcomponents/v1
+kind: Project
+metadata:
+  name: {{ project_name }}
+spec:
+  foundry:
+    hub_name: ai-hub
+    project_name: {{ project_name }}-ai-project
+  agents:
+    - agent.yaml
+  environments:
+    dev:
+      tags: { env: dev }

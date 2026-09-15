@@ -1,0 +1,11 @@
+apiVersion: agentcomponents/v1
+kind: Plugin
+metadata:
+  name: data-tools
+  version: "1.0"
+spec:
+  tools:
+    - name: load_csv
+      type: function
+      source_file: "tools/data_tools.py"
+      function_name: "load_csv"

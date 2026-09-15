@@ -1,0 +1,14 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: supervisor
+  project: {{ project_name }}
+spec:
+  pattern: supervisor
+  model:
+    provider: openai
+    deployment_name: gpt-4
+  supervisor:
+    workers:
+      - worker_1.yaml
+      - worker_2.yaml

@@ -1,0 +1,57 @@
+# FrenchCase — TEF Exam Preparation Platform
+# Deployed as a platform-engineered project on the agent-components chassis.
+# This YAML is the single declarative source: agents, infra, plugins, model routing.
+# Everything below maps to real engines in /Users/ghanshyam/Documents/french-learning/
+apiVersion: agentcomponents/v1
+kind: Project
+metadata:
+  name: frenchcase
+  subscription: ${AZURE_SUBSCRIPTION_ID}
+  resource_group: rg-frenchcase
+  location: eastus
+  tags:
+    domain: "language-learning"
+    exam: "TEF"
+    target: "CLB-7-plus"
+    stack: "fastapi-nextjs"
+spec:
+  foundry:
+    hub_name: my-foundry-resource
+    project_name: agent-lab
+
+  # ── Agents ──────────────────────────────────────────────────────────────
+  # Each agent YAML maps to a real engine in FrenchCase's app/ directory.
+  agents:
+    - ./agents/tutor.yaml              # RAG tutor (react pattern) → app/core/llm.py
+    - ./agents/grader.yaml             # Writing grader (react pattern) → app/core/llm.py grade_text()
+    - ./agents/learncase-team.yaml     # 6-agent LearnCase generator (supervisor) → app/core/multi_agent_learncase.py
+    - ./agents/exam-engine.yaml        # Mock exam orchestrator (sequential) → app/core/exam_engine.py
+    - ./agents/recommender.yaml        # Adaptive recommender (sequential) → app/core/case_recommender.py
+    - ./agents/conversation.yaml       # Role-play conversation partner (react) → app/core/conversation.py
+
+  # ── Infrastructure ──────────────────────────────────────────────────────
+  # Maps FrenchCase's 23 Terraform resources to declarative infra specs.
+  infrastructure:
+    - ./infra/data-plane.yaml          # AI Search, SQL, Blob, Redis (content + learner state)
+    - ./infra/compute.yaml             # App Service / Container Apps / Functions
+
+  # ── Plugins ─────────────────────────────────────────────────────────────
+  # FrenchCase-specific tools exposed to the platform tool registry.
+  plugins:
+    - ./plugins/frenchcase-tools.yaml  # 5 tools: repo_search, get_conjugation, grade_essay, tts_pronounce, load_lesson
+    - ./plugins/content-ingestion.yaml # Podcast/blog/news parsers → content pipeline
+
+  # ── Environments ────────────────────────────────────────────────────────
+  environments:
+    dev:
+      compute_target: functions         # $0 idle — consumption plan
+      model_strategy: speed             # Ollama local 3B
+      embedding_backend: ollama         # bge-m3 local
+    staging:
+      compute_target: container-apps    # auto-scaling
+      model_strategy: balanced          # Azure OpenAI + Ollama fallback
+      embedding_backend: ai-search      # Azure AI Search
+    prod:
+      compute_target: app-service       # always-on B1
+      model_strategy: quality           # Azure OpenAI gpt-4o
+      embedding_backend: ai-search      # Azure AI Search

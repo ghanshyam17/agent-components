@@ -1,0 +1,10 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: writer
+  project: {{ project_name }}
+spec:
+  pattern: react
+  model:
+    provider: openai
+    deployment_name: gpt-4

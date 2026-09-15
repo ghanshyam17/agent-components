@@ -1,0 +1,24 @@
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: exercise-agent
+  project: frenchcase
+  description: "Designs interactive exercises from the content"
+spec:
+  pattern: react
+  model:
+    provider: azure-foundry
+    deployment_name: gpt-4o-mini
+    tier_strategy:
+      lower: { deployment: gpt-4o-mini, alias: lower }
+      higher: { deployment: gpt-4o, alias: higher }
+  tools:
+    builtin: []
+    custom: []
+  memory:
+    session: { backend: in-memory, ttl: 3600 }
+    vector: null
+  infrastructure:
+    compute_target: functions
+    sku: consumption
+    scaling: { min: 0, max: 2 }

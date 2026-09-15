@@ -1,0 +1,53 @@
+# Conversation Partner — role-play scenarios (react pattern)
+# Maps to: app/core/conversation.py — Eva the French role-play partner
+#
+# Eva plays a French role (waiter, baker, doctor...) and the learner
+# practices "what to say". Each turn returns Eva's French reply plus
+# a structured English reference (translation, key vocab, tip, suggested replies).
+apiVersion: agentcomponents/v1
+kind: Agent
+metadata:
+  name: conversation-partner
+  project: frenchcase
+  description: "Role-play conversation partner — Eva plays French roles with English references"
+  tags:
+    role: "conversation"
+    source: "app/core/conversation.py"
+    model: "gemma4:cloud"
+spec:
+  pattern: react
+
+  model:
+    provider: ollama                 # cloud-only — never download locally
+    deployment_name: gemma4:cloud
+    tier_strategy:
+      lower:
+        deployment: gemma4:cloud
+        alias: lower
+      higher:
+        deployment: gpt-4o
+        alias: higher               # Azure OpenAI for complex scenarios
+
+  tools:
+    builtin: []
+    custom:
+      - name: tts_pronounce
+        source_file: ./tools/learncase_tools.py
+        function_name: tts_pronounce
+
+  memory:
+    session:
+      backend: in-memory             # sessions.json — persists across reloads
+      ttl: 86400
+    vector: null                     # conversation is generative, not RAG
+
+  guardrails:
+    input_filters: []
+    output_filters: []
+
+  infrastructure:
+    compute_target: functions
+    sku: consumption
+    scaling:
+      min: 0
+      max: 3

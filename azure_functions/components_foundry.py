@@ -53,23 +53,22 @@ def route_decision(task: str) -> Dict[str, Any]:
 def memory_store_op(operation: str, **kwargs) -> Dict[str, Any]:
     """Memory component ops: remember / search / session."""
     try:
-        from memory_store.in_memory import InMemoryStore
-        from memory_store.models import MemoryQuery, MemoryRecord, SessionState
-        store = InMemoryStore()
+        from memory_store.in_memory import InMemorySessionStore
+        from components_core import SessionState, Message
+        store = InMemorySessionStore()
 
         async def _run():
+            sid = kwargs.get("session_id", "default")
             if operation == "remember":
-                sid = kwargs.get("session_id", "default")
                 text = kwargs.get("text", "")
-                state = await store.get(sid) or SessionState(id=sid)
-                state.add_record(text)
-                await store.put(state)
-                return {"remembered": text[:80], "session": sid}
+                state = await store.get(sid) or SessionState(session_id=sid)
+                state.add_message(Message.user(text))
+                return {"remembered": text[:80], "session": sid, "ok": True}
             elif operation == "search":
-                q = MemoryQuery(text=kwargs.get("text", ""), session_id=kwargs.get("session_id"))
-                hits = await store.search(q)
-                return {"hits": [{"text": getattr(r, "text", str(r)), "score": round(s, 3)} for r, s in hits[:5]]}
-            return {"error": f"unknown op '{operation}'"}
+                state = await store.get(sid)
+                msgs = [m.content for m in getattr(state, "messages", [])] if state else []
+                return {"hits": [{"text": m, "score": 1.0} for m in msgs[:5]], "ok": True}
+            return {"error": f"unknown op '{operation}'", "ok": False}
 
         return asyncio.run(_run())
     except Exception as e:

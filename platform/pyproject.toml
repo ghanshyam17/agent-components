@@ -1,0 +1,36 @@
+[project]
+name = "agent-platform"
+version = "0.1.0"
+description = "YAML-driven platform engineering layer for agent-components — declarative agents, Azure deployment, agentic patterns, sandboxed execution."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    # --- Azure SDK ---
+    "azure-ai-projects>=2.3.0",
+    "azure-identity>=1.17.0",
+    "azure-mgmt-resource>=23.0.0",
+    "azure-mgmt-web>=7.0.0",
+    "azure-mgmt-containerinstance>=10.0.0",
+    "azure-mgmt-redis>=14.0.0",
+    "azure-mgmt-search>=9.0.0",
+    "azure-mgmt-storage>=21.0.0",
+    # --- Core ---
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "pyyaml>=6.0",
+    "click>=8.0",
+    "jinja2>=3.1",
+    "python-dotenv>=1.0",
+    # --- Workspace siblings ---
+    "components-core",
+    "agentic-router",
+    "memory-store",
+    "model-gateway",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.backends"
+
+[tool.hatch.build.targets.wheel]
+packages = ["platform"]

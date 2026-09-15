@@ -9,7 +9,7 @@ requires-python = ">=3.10"
 dependencies = []
 
 [tool.uv.workspace]
-members = ["core", "components/*"]
+members = ["core", "components/*", "platform"]
 
 # Make every workspace member resolvable as a local path dependency by name.
 [tool.uv.sources]
@@ -17,6 +17,7 @@ components-core = { workspace = true }
 agentic-router = { workspace = true }
 memory-store = { workspace = true }
 model-gateway = { workspace = true }
+agent-platform = { workspace = true }
 
 [dependency-groups]
 dev = [

@@ -13,6 +13,35 @@
 | `eval-harness` | **Foundry evaluations / agent evaluators** | run evals against the hosted agent endpoint |
 | HTTP server (`server/app.py`) | **Azure Functions** ($0 idle) + **Toolbox OpenAPI tool** exposure | `azure/functions/` |
 
+## Platform Engineering Layer (NEW)
+
+| Platform Module | Azure Service / Capability | Notes |
+|---|---|---|
+| `platform/schema/` (YAML specs) | **`azure.yaml`** (azd) pattern | Declarative agent + infra definitions |
+| `platform/patterns/react` | **Foundry hosted agent** (ReAct loop) | Wraps existing agentic-router |
+| `platform/patterns/autogen` | **Microsoft Agent Framework** / AutoGen | Conversational multi-agent group chat & debate |
+| `platform/patterns/langgraph` | **LangChain Azure AI** / Foundry Hosted Agent | Stateful cyclical graphs & conditional branching |
+| `platform/patterns/framework_router` | **Foundry Intelligent Router / First Routes** | Routes tasks to AutoGen, LangGraph, or ReAct first |
+| `platform/patterns/supervisor` | **Multi-agent orchestration** (Agent Framework) | Supervisor → worker delegation |
+| `platform/patterns/network` | **A2A protocol** / **Magentic One** | Peer-to-peer agent messaging |
+| `platform/patterns/sequential` | **Prompt Flow** / chain orchestration | Pipeline-style agent chain |
+| `platform/patterns/map_reduce` | **Batch processing** + parallel agent execution | Fan-out/fan-in pattern |
+
+| `platform/sandbox/dynamic_sessions` | **Azure Dynamic Sessions** (Code Interpreter) | Managed sandboxed Python |
+| `platform/sandbox/container_apps` | **Azure Container Apps Jobs** | Custom Docker, GPU workloads |
+| `platform/sandbox/local_docker` | Local Docker | Development sandbox |
+| `platform/deployer/foundry` | **Foundry Agent Service** (create_version_from_code) | Supersedes `deploy_hosted_agent.py` |
+| `platform/deployer/app_service` | **Azure App Service** | Web app deployments |
+| `platform/deployer/container_apps` | **Azure Container Apps** | Containerized agents |
+| `platform/deployer/functions` | **Azure Functions** (Consumption) | Serverless agent endpoints |
+| `platform/deployer/bicep_generator` | **Azure Bicep** templates | IaC generation from YAML |
+| `platform/plugins/` | Plugin extensibility | YAML/JSON/text plugin loading |
+| `platform/scaffold/` | **`azd ai agent init`** pattern | CLI project scaffolding |
+| `platform/engineering/loop` | Loop controls + telemetry | Circuit breakers, guardrails |
+| `platform/engineering/harness` | **Foundry evaluations** (YAML-driven) | Wraps eval-harness component |
+| `platform/engineering/data_infra` | **Azure Data Factory** / **Synapse Spark** | Data pipeline provisioning |
+| `platform/engineering/ai_infra` | **Model catalog** / **Fine-tuning** / **A/B testing** | Model lifecycle management |
+
 Shared platform resources: one hub (`my-foundry-resource`, S0), one project
 (`agent-lab`), one model deployment (`gpt-5-mini`) - imported into Terraform,
 referenced across all sibling repos.
