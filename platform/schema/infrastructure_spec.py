@@ -62,6 +62,30 @@ class ApplicationInsightsResource(BaseResource):
     """Azure Application Insights resource."""
     type: Literal["azure/application-insights"] = Field("azure/application-insights", description="Resource type")
 
+class DataFactoryResource(BaseResource):
+    """Azure Data Factory resource."""
+    type: Literal["azure/data-factory"] = Field("azure/data-factory", description="Resource type")
+    managed_vnet: Optional[bool] = Field(True, description="Enable managed virtual network")
+    integration_runtimes: Optional[List[str]] = Field(default_factory=list, description="Integration runtime names")
+
+class AzureMLWorkspaceResource(BaseResource):
+    """Azure Machine Learning Workspace resource."""
+    type: Literal["azure/ml-workspace"] = Field("azure/ml-workspace", description="Resource type")
+    key_vault: Optional[str] = Field(None, description="Linked Key Vault ID/name")
+    storage_account: Optional[str] = Field(None, description="Linked Storage Account ID/name")
+    container_registry: Optional[str] = Field(None, description="Linked Container Registry ID/name")
+
+class EventHubsResource(BaseResource):
+    """Azure Event Hubs namespace resource."""
+    type: Literal["azure/event-hubs"] = Field("azure/event-hubs", description="Resource type")
+    capacity: Optional[int] = Field(1, description="Throughput units")
+    kafka_enabled: Optional[bool] = Field(True, description="Enable Kafka endpoint")
+
+class SynapseWorkspaceResource(BaseResource):
+    """Azure Synapse Analytics Workspace resource."""
+    type: Literal["azure/synapse-workspace"] = Field("azure/synapse-workspace", description="Resource type")
+    default_data_lake_storage_account: Optional[str] = Field(None, description="Default ADLS Gen2 account")
+
 ResourceType = Annotated[
     Union[
         AISearchResource,
@@ -74,9 +98,14 @@ ResourceType = Annotated[
         SQLDatabaseResource,
         FunctionsAppResource,
         ApplicationInsightsResource,
+        DataFactoryResource,
+        AzureMLWorkspaceResource,
+        EventHubsResource,
+        SynapseWorkspaceResource,
     ],
     Field(discriminator="type"),
 ]
+
 
 class InfrastructureSpecModel(BaseModel):
     """Main specification model for Infrastructure."""

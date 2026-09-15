@@ -13,8 +13,9 @@ def agcomps():
     pass
 
 @agcomps.command()
-@click.option('--pattern', type=click.Choice(['react', 'supervisor', 'network', 'data-analyst', 'automation', 'autogen', 'langgraph', 'framework-router']), required=True, help="Scaffold pattern")
+@click.option('--pattern', type=click.Choice(['react', 'supervisor', 'network', 'data-analyst', 'automation', 'autogen', 'langgraph', 'framework-router', 'component-graph']), required=True, help="Scaffold pattern")
 @click.option('--name', required=True, help="Project name")
+
 @click.option('--monorepo', is_flag=True, help="Scaffold into the monorepo vs standalone")
 @click.option('--template', type=click.Path(exists=True, file_okay=False), help="Path to custom template")
 @click.option('--output', type=click.Path(), default=".", help="Output directory")
@@ -75,8 +76,10 @@ def list_patterns():
         'autogen': 'AutoGen multi-agent conversational group chat & peer collaboration',
         'langgraph': 'LangGraph stateful cyclical graph & workflow orchestration',
         'framework-router': 'First-route classifier routing tasks to AutoGen, LangGraph, or ReAct',
+        'component-graph': 'End-to-end component graph connecting Data Engineering, AML, Tools, and Agents on Foundry',
     }
     for p, desc in patterns.items():
+
         click.echo(f"{p}: {desc}")
 
 

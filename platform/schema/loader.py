@@ -11,8 +11,10 @@ from pydantic import BaseModel
 from platform.schema.agent_spec import AgentSpec
 from platform.schema.project_spec import ProjectSpec
 from platform.schema.infrastructure_spec import InfrastructureSpec
+from platform.schema.component_graph import ComponentGraph
 
-BaseSpec = Union[AgentSpec, ProjectSpec, InfrastructureSpec]
+BaseSpec = Union[AgentSpec, ProjectSpec, InfrastructureSpec, ComponentGraph]
+
 
 def resolve_variables(data: Any, env: Dict[str, str]) -> Any:
     """Recursively resolves ${VAR_NAME} placeholders from environment."""
@@ -46,8 +48,11 @@ def validate_spec(data: Dict[str, Any]) -> BaseSpec:
         return ProjectSpec.model_validate(data)
     elif kind == "Infrastructure":
         return InfrastructureSpec.model_validate(data)
+    elif kind == "ComponentGraph":
+        return ComponentGraph.model_validate(data)
     else:
         raise ValueError(f"Unknown or missing kind field: {kind}")
+
 
 def load_spec(path: Union[str, Path]) -> BaseSpec:
     """Auto-detects YAML/JSON/text, validates, and returns typed spec."""
