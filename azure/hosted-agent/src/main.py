@@ -242,13 +242,13 @@ def _load_graph() -> Any:
             logger.warning("could not load graph spec %s: %s", cand, e)
             continue
         logger.info("component graph loaded from %s", cand)
-        return ComponentGraphOrchestrator(spec)
+        return ComponentGraphOrchestrator(spec, agent_factory=_agent)
 
     logger.warning(
         "no component_graph spec found (searched %s); using the built-in default graph",
         ", ".join(str(c) for c in candidates),
     )
-    return ComponentGraphOrchestrator(_default_graph_spec())
+    return ComponentGraphOrchestrator(_default_graph_spec(), agent_factory=_agent)
 
 
 def _graph():

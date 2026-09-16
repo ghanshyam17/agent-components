@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import zipfile
 from pathlib import Path
@@ -201,7 +202,16 @@ def test_parser_rejects_unknown_target(deploy_mod):
 # --------------------------------------------------------------------------- #
 @pytest.fixture(scope="module")
 def hosted_main():
-    """Import the hosted agent's `main` module from the checkout."""
+    """Import the hosted agent's `main` module from the checkout.
+
+    `FOUNDRY_PROJECT_ENDPOINT` is set first because the module reads it at
+    import time for the data-plane base URL.
+    """
+    os.environ.setdefault(
+        "FOUNDRY_PROJECT_ENDPOINT",
+        "https://my-foundry-resource.services.ai.azure.com/api/projects/agent-lab",
+    )
+    os.environ.setdefault("AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-5-mini")
     sys.path.insert(0, str(REPO_ROOT))
     sys.path.insert(0, str(HOSTED_SRC))
     spec = importlib.util.spec_from_file_location("hosted_main", HOSTED_SRC / "main.py")
@@ -266,14 +276,88 @@ def test_graph_descriptor_reports_wired_planes(hosted_main):
     assert "query_lakehouse" in payload["tools"]
 
 
-def test_run_graph_executes_end_to_end(hosted_main):
-    """`run_graph` must drive the orchestrator and return a serialisable result."""
+@pytest.fixture
+def restore_agent_factory(hosted_main):
+    """Snapshot/restore the pattern's agent factory around a mutating test.
+
+    `_graph()` caches a module-level singleton, so a test that swaps the factory
+    would otherwise leak into later tests.
+    """
+    graph = hosted_main._graph()
+    pattern = graph.agent_pattern
+    original = getattr(pattern, "agent_factory", None)
+    yield pattern
+    if pattern is not None:
+        pattern.agent_factory = original
+
+
+def test_run_graph_drives_the_orchestrator_through_the_injected_agent(
+    hosted_main, restore_agent_factory
+):
+    """`run_graph` must drive the orchestrator end-to-end, offline.
+
+    No model endpoint is reachable in CI, so the pattern's agent factory is
+    replaced with a fake. This asserts the real seam: the orchestrator builds
+    the pattern, the pattern drives the *injected* agent (not one rebuilt from
+    ambient localhost settings), and the result serialises.
+    """
     import asyncio
+
+    from agentic_router.models import AgentEvent
+
+    class _FakeAgent:
+        """Minimal agent exposing the `stream()` contract the loop consumes."""
+
+        def __init__(self) -> None:
+            self.s = type("S", (), {"agent_max_iterations": 8,
+                                    "agent_enable_planning": False,
+                                    "agent_enable_tools": True})()
+            self.calls: list[str] = []
+
+        async def stream(self, task, session_id=None):
+            self.calls.append(task)
+            yield AgentEvent(type="delta", data={"content": "working... "})
+            yield AgentEvent(type="final", data={"content": f"handled: {task}"})
+
+        async def run(self, task, session_id=None):
+            return f"handled: {task}", None, None
+
+    fake = _FakeAgent()
+    restore_agent_factory.agent_factory = lambda: fake
 
     payload = json.loads(asyncio.run(hosted_main.run_graph("Audit the data plane.")))
     assert payload["success"] is True
     assert "duration_ms" in payload
     assert "data_plane" in payload and "ml_plane" in payload
+    assert payload["data_plane"]["status"] == "Operational"
+    # The injected agent was actually exercised, and its final event became the
+    # answer.
+    assert fake.calls == ["Audit the data plane."]
+    assert payload["answer"] == "handled: Audit the data plane."
+    assert payload["events_count"] >= 1
+
+
+def test_orchestrator_passes_agent_factory_to_the_pattern(hosted_main):
+    """The graph must reuse a deployment-provided agent, not rebuild from defaults.
+
+    Regression: `ReActPattern` used to call `build_agent()` with no arguments,
+    which points at `localhost:8001` and ignores the Foundry endpoint entirely.
+    """
+    # Build a fresh graph rather than reading the shared singleton, so this is
+    # independent of test ordering.
+    graph = hosted_main._load_graph()
+    pattern = graph.agent_pattern
+    assert getattr(pattern, "agent_factory", None) is not None
+    # And it is the hosted agent's own Entra-authed builder.
+    assert pattern.agent_factory is hosted_main._agent
+
+
+def test_react_pattern_without_a_factory_falls_back_to_ambient_settings(hosted_main):
+    """The pattern must still work standalone (and warn) when not injected."""
+    from platform.patterns.react import ReActPattern
+
+    pattern = ReActPattern()
+    assert pattern.agent_factory is None
 
 
 def test_hosted_agent_builds_the_tiered_router(hosted_main):

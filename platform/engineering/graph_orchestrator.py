@@ -10,7 +10,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
 from agentic_router.models import AgentEvent
 
@@ -74,6 +74,7 @@ class ComponentGraphOrchestrator:
         resource_group: str = "rg-enterprise-agents",
         data_factory_name: str = "adf-enterprise-data",
         aml_workspace_name: str = "aml-enterprise-workspace",
+        agent_factory: Callable[[], Any] | None = None,
     ) -> None:
         self.graph = graph
         self.spec: ComponentGraphSpec = graph.spec
@@ -81,6 +82,10 @@ class ComponentGraphOrchestrator:
         self.resource_group = resource_group
         self.data_factory_name = data_factory_name
         self.aml_workspace_name = aml_workspace_name
+        # Supplied by a deployment that already built an agent (e.g. the Foundry
+        # hosted agent with Entra auth). Without it, the agent plane falls back
+        # to ambient settings.
+        self.agent_factory = agent_factory
 
         # Managers for Data & ML
         self.data_manager = DataInfraManager(
@@ -129,29 +134,35 @@ class ComponentGraphOrchestrator:
 
         # Build pattern via PatternFactory
         kwargs: Dict[str, Any] = {}
+        # Pass the injected factory through so a deployed agent is reused rather
+        # than rebuilt from ambient (localhost) settings.
+        if self.agent_factory is not None:
+            kwargs["agent_factory"] = self.agent_factory
         if pattern_type == "autogen" and self.spec.agent_plane.autogen:
             ag = self.spec.agent_plane.autogen
-            kwargs = {
+            kwargs.update({
                 "mode": ag.mode,
                 "max_rounds": ag.max_rounds,
                 "admin_name": ag.admin_name,
                 "agents": [a.model_dump() for a in ag.agents],
-            }
+            })
         elif pattern_type == "langgraph" and self.spec.agent_plane.langgraph:
             lg = self.spec.agent_plane.langgraph
-            kwargs = {
+            kwargs.update({
                 "entry_point": lg.entry_point,
                 "finish_point": lg.finish_point or "end",
                 "nodes": [n.model_dump() for n in lg.nodes],
                 "edges": [e.model_dump() for e in lg.edges],
                 "conditional_edges": [c.model_dump() for c in lg.conditional_edges],
-            }
+            })
 
         try:
             self.agent_pattern = PatternFactory.create(pattern_type, **kwargs)
         except Exception as e:
             logger.warning(f"Failed to create pattern '{pattern_type}' via factory ({e}), falling back to ReAct")
-            self.agent_pattern = PatternFactory.create("react")
+            # Keep the injected factory on the fallback path too, otherwise the
+            # fallback silently loses the deployed endpoint.
+            self.agent_pattern = PatternFactory.create("react", **kwargs)
 
     async def execute_task(self, task: str, session_id: str = "session_default") -> ComponentGraphExecutionResult:
         """Execute a task across all plugged-in layers: Data -> ML -> Tools -> Agent."""
