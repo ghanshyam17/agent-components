@@ -11,7 +11,8 @@ This script executes live smoke and functional tests across the entire monorepo:
   8. agentic-router: Dual-tier heuristic & classifier model routing
   9. eval-harness: Dataset-driven evaluation & LLM-as-judge metrics
   10. agent-ui: Universal Fluent-styled UI bridge & SSE stream endpoint
-  11. platform: ComponentGraph Orchestrator bridging ADF, AML, and Agent patterns
+  11. distillation: Synthetic data generation, curation pipeline & LLM distillation
+  12. platform: ComponentGraph Orchestrator bridging ADF, AML, and Agent patterns
 """
 from __future__ import annotations
 
@@ -35,6 +36,7 @@ sys.path.insert(0, str(REPO_ROOT / "components" / "model-gateway"))
 sys.path.insert(0, str(REPO_ROOT / "components" / "tracing"))
 sys.path.insert(0, str(REPO_ROOT / "components" / "agentic-router"))
 sys.path.insert(0, str(REPO_ROOT / "components" / "eval-harness"))
+sys.path.insert(0, str(REPO_ROOT / "components" / "distillation"))
 
 # Terminal styling
 GREEN = "\033[92m"
@@ -340,9 +342,102 @@ async def demo_platform_component_graph() -> None:
     report_success("End-to-End Orchestrator Execution", f"Answer: '{result.answer}' (Duration: {result.duration_ms}ms, Events: {len(result.events)})")
 
 
+
+async def demo_distillation() -> None:
+    print_banner("Component 11/11: distillation", "Synthetic data generation, curation & LLM distillation")
+    from distillation import (
+        ContentCurator, ContentSample, DatasetFormat, DistillationConfig,
+        DistillationPipeline,
+    )
+
+    # A deterministic offline teacher: no model call, no Azure, no GPU.
+    TEACHER = """<thinking>
+The Medallion architecture has three layers. Bronze holds raw data, Silver
+cleans and conforms it, Gold aggregates analytics. I should explain each layer
+and why separating them improves reliability.
+</thinking>
+The Medallion architecture organises a lakehouse into three layers. Bronze
+stores raw ingested data exactly as received. Silver cleans, deduplicates and
+conforms that data. Gold aggregates it into business metrics. The separation
+matters because raw data can be replayed, so a bad transformation is fixed
+without re-ingesting."""
+
+    async def teacher(messages, **kw):
+        return TEACHER, []
+
+    cfg = DistillationConfig(
+        teacher_model="higher",
+        student_base_model="microsoft/Phi-4-mini-instruct",
+        method="lora",
+        format=DatasetFormat.ALPACA,
+        num_samples=8,
+    )
+
+    pipe = DistillationPipeline(
+        cfg, teacher_client=teacher, student_client=teacher,
+        artifact_dir="/tmp/agcomps-distillation-demo", force_mock=True,
+    )
+
+    async def _no_sleep(_: float) -> None:
+        return None
+
+    pipe.foundry._sleep = _no_sleep
+    result = await pipe.run()
+
+    assert result.stages["synthesize"], "synthesis produced nothing"
+    assert result.stages["curate"], "curation rejected every sample"
+    assert result.stages["train"], f"job did not complete: {result.job.status if result.job else None}"
+    report_success(
+        "Synthetic Generation & Curation",
+        f"{len(result.samples)} generated -> {len(result.curated)} curated "
+        f"(quarantined {len(result.quarantine)}, deduped {result.curation.deduplicated}) with CoT traces",
+    )
+
+    assert result.job is not None and result.job.student_model
+    report_success(
+        "Distillation Job",
+        f"job {result.job.job_id} -> {result.job.status.value} on '{result.job.backend}' backend "
+        f"(student: {result.job.student_model})",
+    )
+
+    # Parity matrix — the go/no-go signal. NOTE: this demo binds the SAME
+    # deterministic client as both teacher and student, so retention and style
+    # are trivially 100%. That exercises the metric plumbing, it does NOT
+    # demonstrate distillation quality — only a real student would.
+    parity = result.parity
+    assert parity is not None and parity.examples > 0
+    assert parity.latency_speedup > 0 and parity.cost_savings_pct > 0
+    report_success(
+        "Teacher/Student Parity Matrix (metric plumbing)",
+        f"quality {parity.student_quality:.3f} vs teacher {parity.teacher_quality:.3f} | "
+        f"style {parity.stylistic_similarity:.0%} | TTFT x{parity.latency_speedup:.2f} | "
+        f"cost -{parity.cost_savings_pct:.1f}%  "
+        f"[same client both sides: retention is not a real measurement]",
+    )
+
+    # Curation is a real gate: an off-topic sample must be quarantined with a reason.
+    curator = ContentCurator()
+    kept, quarantined, report = await curator.curate(
+        [
+            ContentSample(
+                prompt="Explain the Medallion architecture layers Bronze Silver Gold.",
+                completion="Bronze stores raw data, Silver cleans it, Gold aggregates metrics for analytics.",
+            ),
+            ContentSample(prompt="Explain gradient descent learning rates.", completion="Meow."),
+        ],
+        cfg,
+    )
+    assert report.quarantined >= 1, "the quality gate did not reject an off-topic sample"
+    report_success(
+        "Quality Gate",
+        f"rejected {report.quarantined} of {report.total_in} off-topic samples: "
+        f"{list(report.quarantine_reasons)[:1]}",
+    )
+
+
 async def main() -> None:
     print(f"\n{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{CYAN}║     AGENT-COMPONENTS: ALL 10 COMPONENTS & PLATFORM LAYER VERIFICATION      ║{RESET}")
+    print(f"{BOLD}{CYAN}║     AGENT-COMPONENTS: ALL 11 COMPONENTS & PLATFORM LAYER VERIFICATION      ║{RESET}")
     print(f"{BOLD}{CYAN}╚════════════════════════════════════════════════════════════════════════════╝{RESET}")
 
     start_time = time.perf_counter()
@@ -357,12 +452,13 @@ async def main() -> None:
     await demo_agentic_router()
     await demo_eval_harness()
     await demo_agent_ui()
+    await demo_distillation()
     await demo_platform_component_graph()
 
     total_time = (time.perf_counter() - start_time) * 1000
 
     print(f"\n{BOLD}{GREEN}{'=' * 76}{RESET}")
-    print(f"{BOLD}{GREEN}🎉 ALL 10 COMPONENTS & PLATFORM ENGINEERING VERIFIED SUCCESSFULLY!{RESET}")
+    print(f"{BOLD}{GREEN}🎉 ALL 11 COMPONENTS & PLATFORM ENGINEERING VERIFIED SUCCESSFULLY!{RESET}")
     print(f"{BOLD}{GREEN}   Total execution time: {total_time:.1f}ms{RESET}")
     print(f"{BOLD}{GREEN}{'=' * 76}{RESET}\n")
 

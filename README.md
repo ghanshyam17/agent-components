@@ -16,8 +16,19 @@ agent-components/
   components/
     agentic-router/            # route tasks to lower/higher model + agentic loop
     memory-store/              # pluggable session + vector memory
-  examples/                    # reference compositions
-  docs/
+    model-gateway/             # OpenAI-compatible façade + advanced vLLM routing
+    toolkit/                   # sandboxed, validated tool registry
+    retriever/                 # RAG: chunk → embed → search → rerank
+    guardrails/                # PII, injection, length, schema
+    tracing/                   # spans + cost/latency accounting
+    eval-harness/              # dataset-driven evaluation
+    prompt-registry/           # versioned prompts
+    agent-ui/                  # metadata-driven UI bridge
+    distillation/              # synthetic data + LLM distillation
+  platform/                    # enterprise engineering layer (ADF/AML/patterns)
+  projects/                    # real deployments on the chassis (e.g. frenchcase)
+  scripts/
+    demo_all_components.py     # end-to-end verification of every component
 ```
 
 ## Install
@@ -67,7 +78,7 @@ hits = await vm.search(MemoryQuery(query="...", top_k=4))
 
 ## Roadmap
 
-The full curated taxonomy (in priority order). All 10 modular components and the enterprise Platform Engineering layer are completed.
+The full curated taxonomy (in priority order). All 11 modular components and the enterprise Platform Engineering layer are completed.
 
 | # | Component | Role | Status |
 |---|-----------|------|--------|
@@ -81,7 +92,8 @@ The full curated taxonomy (in priority order). All 10 modular components and the
 | 8 | `eval-harness` | Dataset-driven eval + LLM-judge metrics | ✅ Done |
 | 9 | `prompt-registry` | Versioned, templated prompts + hot-reload | ✅ Done |
 | 10 | `agent-ui` | Universal metadata-driven UI bridge (FastAPI + Fluent UI + SSE + Grafana + Power Automate) | ✅ Done |
-| 11 | `platform` | Enterprise Platform Engineering: ADF & AML orchestrator, 8 design patterns, Medallion Lakehouse | ✅ Done |
+| 11 | `distillation` | Synthetic data generation + LLM distillation: teacher CoT mining, quality/safety curation, Foundry fine-tuning, teacher↔student parity matrix | ✅ Done |
+| — | `platform` | *Layer (not a component):* Enterprise Platform Engineering — ADF & AML orchestrator, 8 design patterns, Medallion Lakehouse | ✅ Done |
 
 ## License
 

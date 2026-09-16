@@ -24,6 +24,7 @@ tracing = { workspace = true }
 eval-harness = { workspace = true }
 prompt-registry = { workspace = true }
 agent-ui = { workspace = true }
+distillation = { workspace = true }
 agent-platform = { workspace = true }
 
 [dependency-groups]
