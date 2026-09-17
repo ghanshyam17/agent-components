@@ -87,6 +87,48 @@ genuinely worthless — and each strategy documents its own failure mode:
 Order preservation in `extractive` is deliberate — reordering a passage changes
 its argument even when every sentence survives.
 
+## Checkpointing (`checkpoint.py`)
+
+Durable, resumable run state, answering one question after a crash:
+
+> **"What has already happened, and is it safe to do it again?"**
+
+| Backend | Durable | Shared | Use |
+|---|---|---|---|
+| `memory` | ✗ | ✗ | tests; **cannot survive the crash it exists for** |
+| `file` | ✓ | ✗ | the honest default — survives a restart with zero infrastructure |
+| `redis` | ✓ | ✓ | multi-replica |
+| `cosmos` | ✓ | ✓ | Azure-native |
+
+`capability()` reports what each can actually promise, because "we use Redis" and
+"our checkpoints survive a pod restart" are different claims.
+
+### The write discipline
+
+```
+save(step, PENDING)    # intent — before the side effect
+...execute...
+save(step, COMPLETED)  # after
+```
+
+A crash between the two leaves `PENDING`, which resume reads as **unknown**: the
+step started and its outcome is not knowable. Without the pre-write, a crash
+mid-execution is indistinguishable from a step that never ran, and resume
+silently replays a step that may have charged a card.
+
+```python
+plan = await CheckpointedRun(cp, run_id, steps).plan()
+print(plan.explain())
+# ResumePlan: nightly from checkpoint #6
+#   skip 2 completed, run 1 pending
+#   ! step 'charge_card' was in flight when the last checkpoint was written;
+#     its side effects are unknown — verify before it runs again
+```
+
+`ResumePlan` is returned rather than a bare state dict so a caller cannot resume
+without seeing the warnings. Degrading to memory is allowed (a missing Redis
+should not kill a run) but never silent: the object reports `degraded_from`.
+
 ## What it does not do
 
 - **No storage.** Memory persistence is `memory-store`'s job; this component

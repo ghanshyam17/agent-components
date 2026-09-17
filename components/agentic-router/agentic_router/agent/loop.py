@@ -26,6 +26,17 @@ from agentic_router.tools.base import Registry
 from components_core import SessionState
 from memory_store import SessionStore
 
+try:  # optional: checkpointing is opt-in and must not be a hard dependency
+    from context_manager.checkpoint import (
+        Checkpointer,
+        CheckpointStatus,
+        RunCheckpoint,
+        StepOutcome,
+    )
+except ImportError:  # pragma: no cover - context-manager not installed
+    Checkpointer = None  # type: ignore[assignment]
+    CheckpointStatus = RunCheckpoint = StepOutcome = None  # type: ignore[assignment]
+
 AGENT_SYSTEM = """You are an autonomous agent. Use the provided tools when the task requires
 external action, then answer concisely. To call a tool, emit a tool_call with
 the tool's name and JSON arguments. After tools return, summarize their output
@@ -41,12 +52,111 @@ class Agent:
         router: Router,
         tools: Registry,
         sessions: SessionStore,
+        checkpointer: "Checkpointer | None" = None,
     ):
         self.s = settings
         self.registry = registry
         self.router = router
         self.tools = tools
         self.sessions = sessions
+        # Optional. When present, every tool call is checkpointed around, so a
+        # crash mid-run can distinguish "this tool never ran" from "this tool
+        # ran and we do not know whether its side effect landed".
+        self.checkpointer = checkpointer
+
+    # ------------------------------------------------------------ checkpointing
+    # All of these are no-ops when no checkpointer is configured, so the
+    # checkpointing capability is strictly opt-in and costs nothing when unused.
+
+    def _run_id(self, session_id: str) -> str:
+        return f"agent:{session_id}"
+
+    @staticmethod
+    def _subtask_key(idx: int, desc: str) -> str:
+        """Stable across restarts, but not across a changed plan.
+
+        The description is part of the key on purpose: if the planner produces
+        different subtasks on the retry, the previous run's completions are for
+        different work and must not be treated as done.
+        """
+        import hashlib
+
+        digest = hashlib.sha256(desc.encode()).hexdigest()[:12]
+        return f"subtask:{idx}:{digest}"
+
+    @staticmethod
+    def _tool_key(iteration: int, call: object) -> str:
+        """Identify a tool call by name + arguments, not by position.
+
+        Position would collide across restarts if the model emitted a different
+        number of calls; content-addressing means the same call is recognised
+        and a *different* call is not mistaken for a completed one.
+        """
+        import hashlib
+        import json
+
+        args = getattr(call, "arguments", None)
+        try:
+            payload = json.dumps(args, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            payload = str(args)
+        digest = hashlib.sha256(
+            f"{getattr(call, 'name', '?')}\x00{payload}".encode()
+        ).hexdigest()[:12]
+        return f"tool:{iteration}:{getattr(call, 'name', '?')}:{digest}"
+
+    async def _load_state(self, session_id: str) -> dict:
+        """The recorded step ledger for this session, or {} when none."""
+        if self.checkpointer is None:
+            return {}
+        latest = await self.checkpointer.latest(self._run_id(session_id))
+        if latest is None:
+            return {}
+        return dict(latest.step_outcomes)
+
+    async def _completed_subtasks(self, session_id: str, descriptions: list[str]) -> set[str]:
+        ledger = await self._load_state(session_id)
+        done: set[str] = set()
+        for idx, desc in enumerate(descriptions, start=1):
+            key = self._subtask_key(idx, desc)
+            if StepOutcome is not None and ledger.get(key) is StepOutcome.COMPLETED:
+                done.add(key)
+        return done
+
+    async def _save_ledger(self, session_id: str, task: str, ledger: dict) -> None:
+        if self.checkpointer is None:
+            return
+        await self.checkpointer.save(
+            RunCheckpoint(
+                run_id=self._run_id(session_id),
+                step=task[:120],
+                status=CheckpointStatus.RUNNING,
+                step_outcomes=ledger,
+                state={"task": task},
+            )
+        )
+
+    async def _checkpoint_subtask(
+        self, session_id: str, descriptions: list[str], key: str, outcome: object
+    ) -> None:
+        if self.checkpointer is None:
+            return
+        ledger = await self._load_state(session_id)
+        ledger[key] = outcome
+        # Record every subtask key so a subsequent run can match them.
+        for idx, desc in enumerate(descriptions, start=1):
+            ledger.setdefault(self._subtask_key(idx, desc), StepOutcome.SKIPPED)
+        ledger[key] = outcome
+        await self._save_ledger(session_id, f"subtasks:{len(descriptions)}", ledger)
+
+    async def _checkpoint_tool(
+        self, session_id: str, task: str, key: str, call: object, outcome: object
+    ) -> None:
+        if self.checkpointer is None:
+            return
+        ledger = await self._load_state(session_id)
+        ledger[key] = outcome
+        await self._save_ledger(session_id, task, ledger)
 
     # ------------------------------------------------------------------ public
     async def run(
@@ -98,10 +208,27 @@ class Agent:
         running_msgs = list(state.messages)
         overall_answer_parts: list[str] = []
 
+        # Resume support: if a previous attempt recorded completed subtasks,
+        # do not re-run them. Subtasks are the natural checkpoint unit because
+        # each one may complete real work (tool side effects) irreversibly.
+        completed_subtasks = await self._completed_subtasks(state.session_id, subtask_descriptions)
+
         for idx, desc in enumerate(subtask_descriptions, start=1):
+            key = self._subtask_key(idx, desc)
+            if key in completed_subtasks:
+                yield AgentEvent(
+                    type="subtask_skipped",
+                    data={"index": idx, "description": desc,
+                          "reason": "already completed in a previous run"},
+                )
+                continue
+
             yield AgentEvent(
                 type="subtask_start",
                 data={"index": idx, "description": desc},
+            )
+            await self._checkpoint_subtask(
+                state.session_id, subtask_descriptions, key, StepOutcome.PENDING
             )
             decision = await self.router.route(desc)
             yield AgentEvent(type="route", data={"decision": decision.model_dump()})
@@ -111,7 +238,8 @@ class Agent:
 
             answer: str = ""
             async for ev in self._react_loop(
-                client, desc, running_msgs, tools_schema, decision.tier
+                client, desc, running_msgs, tools_schema, decision.tier,
+                state.session_id,
             ):
                 yield ev
                 if ev.type == "answer":
@@ -123,6 +251,9 @@ class Agent:
             await self.sessions.add_message(
                 state.session_id,
                 Message(role="assistant", content=f"[subtask {idx}] {answer}"),
+            )
+            await self._checkpoint_subtask(
+                state.session_id, subtask_descriptions, key, StepOutcome.COMPLETED
             )
 
         final_text = (
@@ -143,6 +274,7 @@ class Agent:
         history: list[Message],
         tools_schema: list[dict] | None,
         tier: ModelTier,
+        session_id: str = "",
     ) -> AsyncIterator[AgentEvent]:
         """ReAct loop for one subtask, streaming token deltas.
 
@@ -178,7 +310,26 @@ class Agent:
                 yield AgentEvent(
                     type="tool_call", data={"name": call.name, "arguments": call.arguments}
                 )
-                result: ToolResult = await self.tools.dispatch(call.name, call.arguments)
+                # Checkpoint BEFORE dispatch. A tool may move money, send mail
+                # or mutate a warehouse, and the process can die between the
+                # call and its return. Writing intent first is the only way a
+                # later run can tell "never started" from "started, outcome
+                # unknown" — the difference between safely retrying and
+                # double-charging.
+                tool_key = self._tool_key(iteration, call)
+                await self._checkpoint_tool(
+                    session_id, task, tool_key, call, StepOutcome.PENDING
+                )
+                try:
+                    result: ToolResult = await self.tools.dispatch(call.name, call.arguments)
+                except Exception as exc:  # noqa: BLE001
+                    await self._checkpoint_tool(
+                        session_id, task, tool_key, call, StepOutcome.FAILED
+                    )
+                    raise type(exc)(f"tool {call.name!r} raised: {exc}") from exc
+                await self._checkpoint_tool(
+                    session_id, task, tool_key, call, StepOutcome.COMPLETED
+                )
                 yield AgentEvent(
                     type="tool_result",
                     data={

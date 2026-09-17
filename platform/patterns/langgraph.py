@@ -59,7 +59,11 @@ class LangGraphPattern(AgentPattern):
             for c_edge in conditional_edges:
                 self._conditional_edges[c_edge["source_node"]] = c_edge
 
-        # In-memory checkpointer store
+        # Real checkpointing, via context-manager. Previously this was a bare
+        # dict that was written and NEVER read, behind a `checkpointer` param
+        # that advertised four backends and silently implemented one.
+        self._checkpointer = self._build_checkpointer(checkpointer)
+        # Retained for backwards compatibility with anything reading it.
         self._state_store: Dict[str, Dict[str, Any]] = {}
 
     @property
@@ -165,9 +169,12 @@ class LangGraphPattern(AgentPattern):
                 data={"node": current_node, "content": node_output},
             )
 
-            # Checkpoint state
-            if self.checkpointer == "memory":
-                self._state_store[f"{context.session_id}:{steps}"] = dict(state)
+            # Checkpoint state after every node. The previous implementation
+            # gated on `checkpointer == "memory"` and only wrote, so declaring
+            # "redis" wrote nothing at all — silently. A real save is awaited,
+            # and _build_checkpointer has already reported any degradation.
+            self._state_store[f"{context.session_id}:{steps}"] = dict(state)
+            await self._save_checkpoint(context, state, steps, node_output)
 
             # Determine next node: conditional edge first, then direct edge
             if current_node in self._conditional_edges:
@@ -199,6 +206,95 @@ class LangGraphPattern(AgentPattern):
             f"{', '.join(self._nodes.keys())}. Workflow finalized."
         )
         yield AgentEvent(type="final", data={"content": final_summary, "steps": steps})
+
+
+    # ------------------------------------------------------------ checkpointing
+    _CHECKPOINT_BACKENDS = ("memory", "file", "redis", "cosmos")
+
+    def _build_checkpointer(self, kind: str):
+        """Resolve the declared backend, degrading loudly when unavailable.
+
+        Failure to *build* a checkpointer must not take the pattern down: the
+        run is more valuable than the durability. But it is never silent — a
+        warning is logged and the object reports `degraded_from`.
+        """
+        if kind not in self._CHECKPOINT_BACKENDS:
+            logger.warning(
+                "unknown checkpointer %r for LangGraphPattern; expected one of %s — "
+                "falling back to in-memory, which does NOT survive a restart",
+                kind,
+                ", ".join(self._CHECKPOINT_BACKENDS),
+            )
+            kind = "memory"
+        try:
+            from context_manager.checkpoint import build_checkpointer
+        except ImportError:  # pragma: no cover - context-manager absent
+            logger.warning(
+                "context-manager is not installed; LangGraphPattern cannot "
+                "checkpoint to %r and will keep state in memory only",
+                kind,
+            )
+            return None
+        try:
+            return build_checkpointer(kind)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "checkpointer %r could not be built (%s); continuing without "
+                "durable checkpointing",
+                kind,
+                exc,
+            )
+            return None
+
+    async def _save_checkpoint(
+        self, context: Any, state: Dict[str, Any], steps: int, node_output: str
+    ) -> None:
+        """Persist one node's completion. No-op when no checkpointer is wired."""
+        if self._checkpointer is None:
+            return
+        try:
+            from context_manager.checkpoint import (
+                CheckpointStatus,
+                RunCheckpoint,
+                StepOutcome,
+            )
+
+            await self._checkpointer.save(
+                RunCheckpoint(
+                    run_id=f"langgraph:{context.session_id}",
+                    step=f"node:{steps}",
+                    status=CheckpointStatus.RUNNING,
+                    step_outcomes={f"node:{steps}": StepOutcome.COMPLETED},
+                    state={
+                        "current_node": state.get("current_node"),
+                        "steps": steps,
+                        "output": node_output,
+                    },
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            # A checkpoint failure must not fail the graph run; it is recorded
+            # so a silent durability loss is still visible.
+            logger.warning("checkpoint save failed at step %s: %s", steps, exc)
+
+    async def resume_from_checkpoint(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """State from the most recent node completed for this session.
+
+        This is the read path the previous implementation never had. Without it
+        the stored state was unreachable, which made "resumable" untrue.
+        """
+        if self._checkpointer is None:
+            return None
+        latest = await self._checkpointer.latest(f"langgraph:{session_id}")
+        return latest.state if latest is not None else None
+
+    def checkpoint_capability(self) -> Dict[str, Any]:
+        """What this pattern's checkpointer can promise. Empty = none wired."""
+        if self._checkpointer is None:
+            return {"backend": None, "durable": False, "detail": "no checkpointer wired"}
+        return self._checkpointer.capability().to_dict()
+
+
 
     def to_foundry_config(self) -> Dict[str, Any]:
         """Export config for Azure AI Foundry hosted agent."""

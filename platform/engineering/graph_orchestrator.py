@@ -75,6 +75,7 @@ class ComponentGraphOrchestrator:
         data_factory_name: str = "adf-enterprise-data",
         aml_workspace_name: str = "aml-enterprise-workspace",
         agent_factory: Callable[[], Any] | None = None,
+        checkpointer: Any = None,
     ) -> None:
         self.graph = graph
         self.spec: ComponentGraphSpec = graph.spec
@@ -86,6 +87,9 @@ class ComponentGraphOrchestrator:
         # hosted agent with Entra auth). Without it, the agent plane falls back
         # to ambient settings.
         self.agent_factory = agent_factory
+        # Optional run checkpointing. A component-graph run touches several
+        # planes in sequence, so a crash part-way loses all of it without this.
+        self.checkpointer = checkpointer
 
         # Managers for Data & ML
         self.data_manager = DataInfraManager(
@@ -195,11 +199,23 @@ class ComponentGraphOrchestrator:
         )
 
         final_answer = ""
+        # Pre-write: record the run as started so a crash mid-execution is
+        # distinguishable from a run that never began.
+        await self._checkpoint(session_id, task, status="running", step="execute_task")
+
         if self.agent_pattern:
             async for event in self.agent_pattern.stream(context):
                 events.append(event)
                 if event.type == "final":
                     final_answer = event.data.get("content", "")
+
+        # Mark the run complete only after the stream finished. If the process
+        # died above, this line never ran and the checkpoint stays "running" —
+        # which is the signal a later run uses to know it should resume.
+        await self._checkpoint(
+            session_id, task, status="completed", step="execute_task",
+            state={"answer": final_answer, "events": len(events)},
+        )
 
         duration_ms = int((time.time() - start_time) * 1000)
         return ComponentGraphExecutionResult(
@@ -210,6 +226,70 @@ class ComponentGraphOrchestrator:
             ml_plane_status=ml_status,
             duration_ms=duration_ms,
         )
+
+    # ------------------------------------------------------------ checkpointing
+    def _run_id(self, session_id: str) -> str:
+        return f"orchestrator:{session_id}"
+
+    async def _checkpoint(
+        self,
+        session_id: str,
+        task: str,
+        *,
+        status: str,
+        step: str,
+        state: dict[str, Any] | None = None,
+    ) -> None:
+        """Persist run progress. No-op when no checkpointer is configured."""
+        if self.checkpointer is None:
+            return
+        try:
+            from context_manager.checkpoint import (
+                CheckpointStatus,
+                RunCheckpoint,
+                StepOutcome,
+            )
+
+            outcome = (
+                StepOutcome.COMPLETED if status == "completed" else StepOutcome.PENDING
+            )
+            await self.checkpointer.save(
+                RunCheckpoint(
+                    run_id=self._run_id(session_id),
+                    step=step,
+                    status=CheckpointStatus(status),
+                    step_outcomes={step: outcome},
+                    state={"task": task, **(state or {})},
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Never fail a run because checkpointing failed; log it so the loss
+            # of durability is not invisible.
+            logger.warning("orchestrator checkpoint failed (%s): %s", session_id, exc)
+
+    async def resume_state(self, session_id: str) -> dict[str, Any] | None:
+        """State from the last checkpoint for this session, or None."""
+        if self.checkpointer is None:
+            return None
+        latest = await self.checkpointer.latest(self._run_id(session_id))
+        return latest.state if latest is not None else None
+
+    async def was_interrupted(self, session_id: str) -> bool:
+        """True when a previous run started and never marked completion.
+
+        This is the query that makes resume actionable: a ``running`` status
+        with no ``completed`` write means the process died mid-execution.
+        """
+        if self.checkpointer is None:
+            return False
+        try:
+            from context_manager.checkpoint import CheckpointStatus
+        except ImportError:  # pragma: no cover - context-manager absent
+            return False
+        latest = await self.checkpointer.latest(self._run_id(session_id))
+        if latest is None:
+            return False
+        return latest.status is not CheckpointStatus.COMPLETED
 
     def to_foundry_deployment_spec(self) -> Dict[str, Any]:
         """Synthesizes deployment configuration for Azure AI Foundry SDK hosted agents."""

@@ -567,6 +567,118 @@ async def demo_context_manager() -> None:
     assert package.tokens_used <= package.budget.input_allowance
 
 
+async def demo_checkpointing() -> None:
+    print_banner(
+        "Checkpointing",
+        "Durable, resumable run state — and honest side-effect reporting",
+    )
+    import tempfile
+
+    from context_manager import (
+        CheckpointedRun,
+        FileCheckpointer,
+        InMemoryCheckpointer,
+        RunCheckpoint,
+        StepOutcome,
+    )
+
+    workdir = tempfile.mkdtemp()
+    executed: list[str] = []
+
+    async def fetch(state):
+        executed.append("fetch")
+        return {"doc": "INV-2024-0042"}
+
+    async def extract(state):
+        executed.append("extract")
+        return {"total": 1440.00}
+
+    async def load(state):
+        executed.append("load")
+        raise RuntimeError("warehouse unavailable")
+
+    # --- run 1: dies part-way ------------------------------------------------
+    run1 = CheckpointedRun(
+        FileCheckpointer(workdir), "nightly", ["fetch", "extract", "load"]
+    )
+    try:
+        await run1.execute({"fetch": fetch, "extract": extract, "load": load})
+    except RuntimeError as exc:
+        print(f"  {YELLOW}✖{RESET} run 1 died at 'load': {exc}")
+    print(f"      steps that ran: {executed}")
+
+    # --- run 2: a new object graph, reading only what is on disk -------------
+    executed.clear()
+
+    async def load_ok(state):
+        executed.append("load")
+        assert state["total"] == 1440.00, "state must be restored, not recomputed"
+        return {"loaded": True}
+
+    run2 = CheckpointedRun(
+        FileCheckpointer(workdir), "nightly", ["fetch", "extract", "load"]
+    )
+    plan = await run2.execute(
+        {"fetch": fetch, "extract": extract, "load": load_ok}
+    )
+    print(
+        f"  {GREEN}✔{RESET} run 2 resumed: skipped {plan.skip} "
+        f"(completed steps did NOT re-execute)"
+    )
+    print(f"      re-ran: {executed}  |  restored state: {plan.state}")
+
+    # --- the case that matters: crash mid-side-effect ------------------------
+    crashdir = tempfile.mkdtemp()
+    cp = FileCheckpointer(crashdir)
+
+    async def charge(state):
+        raise RuntimeError("killed mid-charge")
+
+    r3 = CheckpointedRun(cp, "payments", ["charge_card"])
+    try:
+        await r3.execute({"charge_card": charge}, state={"amount": 500})
+    except RuntimeError:
+        pass
+    plan3 = await CheckpointedRun(
+        FileCheckpointer(crashdir), "payments", ["charge_card"]
+    ).plan()
+    print(
+        f"  {GREEN}✔{RESET} step RAISED -> resume retries it but {YELLOW}warns the "
+        f"partial side effect is not undone{RESET}"
+    )
+    for w in plan3.warnings:
+        print(f"      …{w[-88:]}")
+
+    # The harder case: no exception at all, just a process that died. Only the
+    # pre-write survives, leaving PENDING — which is the signal that the side
+    # effect is genuinely unknown rather than merely incomplete.
+    harddir = tempfile.mkdtemp()
+    hard = FileCheckpointer(harddir)
+    pending_key = "tool:0:charge_card"
+    await hard.save(
+        RunCheckpoint(
+            run_id="payments2",
+            step="charge_card",
+            step_outcomes={pending_key: StepOutcome.PENDING},
+            state={"amount": 500},
+        )
+    )
+    plan4 = await CheckpointedRun(
+        FileCheckpointer(harddir), "payments2", [pending_key]
+    ).plan()
+    print(
+        f"  {GREEN}✔{RESET} process KILLED mid-step -> resume reports the side "
+        f"effect is {YELLOW}unknown{RESET}"
+    )
+    for w in plan4.warnings:
+        print(f"      …{w[:88]}")
+    print(
+        f"  {GREEN}✔{RESET} backends report honestly: memory="
+        f"{InMemoryCheckpointer.__name__}=volatile, file=durable; "
+        f"an unavailable backend degrades with a warning"
+    )
+
+
 async def main() -> None:
     print(f"\n{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════╗{RESET}")
     print(f"{BOLD}{CYAN}║     AGENT-COMPONENTS: ALL 13 COMPONENTS & PLATFORM LAYER VERIFICATION      ║{RESET}")
@@ -587,6 +699,7 @@ async def main() -> None:
     await demo_distillation()
     await demo_doc_processing()
     await demo_context_manager()
+    await demo_checkpointing()
     await demo_platform_component_graph()
 
     total_time = (time.perf_counter() - start_time) * 1000

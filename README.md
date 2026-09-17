@@ -26,7 +26,7 @@ agent-components/
     agent-ui/                  # metadata-driven UI bridge
     distillation/              # synthetic data + LLM distillation
     doc-processing/            # OCR → extraction → validation (IDP)
-    context-manager/           # budgeted context-window assembly + compaction
+    context-manager/           # budgeted context-window assembly + compaction + checkpointing
   platform/                    # enterprise engineering layer (ADF/AML/patterns)
   projects/                    # real deployments on the chassis (e.g. frenchcase)
   scripts/
@@ -95,7 +95,7 @@ The full curated taxonomy (in priority order). All 13 modular components and the
 | 9 | `prompt-registry` | Versioned, templated prompts + hot-reload | ✅ Done |
 | 10 | `agent-ui` | Universal metadata-driven UI bridge (FastAPI + Fluent UI + SSE + Grafana + Power Automate) | ✅ Done |
 | 11 | `distillation` | Synthetic data generation + LLM distillation: teacher CoT mining, quality/safety curation, Foundry fine-tuning, teacher↔student parity matrix | ✅ Done |
-| 13 | `context-manager` | Context window as a budget: output reserved first, eviction by priority, content dedup, source caps, per-segment ceiling, four compaction strategies with an auditable decision trail per segment | ✅ Done |
+| 13 | `context-manager` | Context window as a budget: output reserved first, eviction by priority, content dedup, source caps, per-segment ceiling, four compaction strategies with an auditable decision trail per segment. Also owns **checkpointing**: durable resumable run state across 4 backends, with unknown-side-effect reporting | ✅ Done |
 | 12 | `doc-processing` | Intelligent document processing: OCR/layout ingestion (Azure Document Intelligence + text-layer + stub), provenance-tracked field extraction, and layered validation (per-field, cross-field, document-level) | ✅ Done |
 | — | `platform` | *Layer (not a component):* Enterprise Platform Engineering — ADF & AML orchestrator, 8 design patterns, Medallion Lakehouse | ✅ Done |
 
