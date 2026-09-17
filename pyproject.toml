@@ -25,6 +25,7 @@ eval-harness = { workspace = true }
 prompt-registry = { workspace = true }
 agent-ui = { workspace = true }
 distillation = { workspace = true }
+doc-processing = { workspace = true }
 agent-platform = { workspace = true }
 
 [dependency-groups]

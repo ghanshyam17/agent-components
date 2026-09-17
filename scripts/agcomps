@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""Console entry point for the `agcomps` CLI.
+
+Why this exists instead of a plain `[project.scripts]` entry
+-----------------------------------------------------------
+``[project.scripts] agcomps = "platform.scaffold.cli:agcomps"`` **cannot work**
+for this monorepo. The platform package is a *top-level* package literally named
+``platform``, which collides with the Python standard-library module of the same
+name. Two independent facts make it un-importable as an installed script:
+
+1. The standard library directory precedes ``site-packages`` on ``sys.path``, so
+   the stdlib ``platform.py`` wins over any installed ``platform`` package.
+2. The editable install's ``.pth`` adds ``<repo>/platform`` to ``sys.path`` —
+   that is the *package directory*, not its parent — so ``platform/__init__.py``
+   is never recognised as a package (``'platform' is not a package``).
+
+A generated console script imports its target *before* any project code runs, so
+there is nowhere to intervene. This launcher instead puts the repo root on
+``sys.path`` first and then imports the CLI, which makes the repo's ``platform``
+package resolve through ``sys.modules`` before the stdlib copy is consulted —
+the same trick the root ``conftest.py`` uses for pytest.
+
+The robust long-term fix is renaming the package (e.g. ``agentplatform``); until
+then this shim keeps the documented ``agcomps`` command working.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+
+def _find_repo_root() -> Path | None:
+    """Locate the monorepo root, from the script's own path or the launcher's.
+
+    The script lives at ``<repo>/scripts/agcomps``, but an installed copy sits in
+    ``<repo>/.venv/bin/agcomps``. Walk up from wherever this file is and look for
+    a directory containing ``platform/__init__.py``.
+    """
+    here = Path(__file__).resolve()
+    for cand in (here.parent, *here.parents):
+        if (cand / "platform" / "__init__.py").is_file():
+            return cand
+    return None
+
+
+def main() -> int:
+    root = _find_repo_root()
+    if root is None:
+        print(
+            "agcomps: cannot locate the agent-components repo root "
+            f"(looked upward from {Path(__file__).resolve()})",
+            file=sys.stderr,
+        )
+        return 2
+
+    path = str(root)
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+    from platform.scaffold.cli import agcomps
+
+    agcomps()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

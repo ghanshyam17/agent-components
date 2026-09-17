@@ -35,10 +35,52 @@ def new(pattern: str, name: str, monorepo: bool, template: Optional[str], output
 @click.option('--project', type=click.Path(exists=True, dir_okay=False), required=True, help="Path to project.yaml")
 @click.option('--env', type=click.Choice(['dev', 'staging', 'prod']), required=True, help="Deployment environment")
 @click.option('--dry-run', is_flag=True, help="Plan without deploying")
-def deploy(project: str, env: str, dry_run: bool):
-    """Deploy a project."""
-    click.echo(f"Deploying project {project} to {env} (dry-run: {dry_run})")
-    # Calls DeployEngine.deploy() in real implementation
+@click.option('--target', type=click.Choice(['router', 'component-graph']), default='router',
+              help="Which hosted agent to deploy")
+@click.option('--endpoint', default=None, help="Foundry project endpoint (else env/Terraform)")
+@click.option('--model', default=None, help="Model deployment name (else env/Terraform)")
+def deploy(project: str, env: str, dry_run: bool, target: str, endpoint: Optional[str], model: Optional[str]):
+    """Deploy a project to Azure AI Foundry Agent Service.
+
+    One-click path: `agcomps deploy --project projects/component_graph.yaml --env dev`.
+
+    Endpoint and model fall back to the Terraform outputs of `azure/terraform`
+    when not given here, so a configured checkout needs no extra flags.
+    """
+    import asyncio
+    import json
+
+    from platform.deployer.foundry import FoundryDeployer
+
+    try:
+        spec = load_spec(project)
+    except Exception as e:
+        raise click.ClickException(f"could not load spec {project}: {e}")
+
+    click.echo(f"Loaded {spec.kind} spec '{spec.metadata.name}' from {project}")
+    click.echo(f"Environment: {env} | target: {target}")
+
+    deployer = FoundryDeployer(
+        {"deploy_target": target, "foundry_endpoint": endpoint, "model": model}
+    )
+
+    if dry_run:
+        try:
+            plan = deployer.plan(spec)
+        except Exception as e:
+            raise click.ClickException(f"planning failed: {e}")
+        click.echo(json.dumps(plan, indent=2, default=str))
+        click.echo("Dry run: nothing was deployed.")
+        return
+
+    result = asyncio.run(deployer.deploy(spec))
+    if not result.success:
+        raise click.ClickException("; ".join(result.errors) or "deployment failed")
+    click.echo(
+        f"Deployed {result.agent_name} (version {result.version}) in {result.duration_ms} ms"
+    )
+    for key, value in result.endpoints.items():
+        click.echo(f"  {key}: {value}")
 
 @agcomps.command()
 @click.option('--agent', type=click.Path(exists=True, dir_okay=False), required=True, help="Path to agent.yaml")

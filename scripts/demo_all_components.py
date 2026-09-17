@@ -344,7 +344,7 @@ async def demo_platform_component_graph() -> None:
 
 
 async def demo_distillation() -> None:
-    print_banner("Component 11/11: distillation", "Synthetic data generation, curation & LLM distillation")
+    print_banner("Component 11/12: distillation", "Synthetic data generation, curation & LLM distillation")
     from distillation import (
         ContentCurator, ContentSample, DatasetFormat, DistillationConfig,
         DistillationPipeline,
@@ -435,9 +435,72 @@ without re-ingesting."""
     )
 
 
+async def demo_doc_processing() -> None:
+    print_banner(
+        "Component 12/12: doc-processing",
+        "OCR ingestion, provenance-tracked extraction & layered validation",
+    )
+    from doc_processing import (
+        DocumentPipeline,
+        INVOICE_SCHEMA,
+        StubEngine,
+    )
+
+    good = """INVOICE
+Invoice No: INV-2024-0042
+Invoice Date: 15/03/2026
+Due Date: 14/04/2026
+Vendor: Acme Industrial Supplies Ltd
+Subtotal: 1,200.00
+VAT: 240.00
+Total: 1,440.00
+Currency: EUR"""
+
+    # A deliberately broken invoice: the amounts do not reconcile and the due
+    # date precedes the invoice date.
+    bad = """INVOICE
+Invoice No: INV-9999
+Invoice Date: 15/03/2026
+Due Date: 01/03/2026
+Vendor: Suspicious Supplies
+Subtotal: 1,200.00
+VAT: 240.00
+Total: 9,999.00"""
+
+    pipe = DocumentPipeline(INVOICE_SCHEMA, engine=StubEngine(text=good))
+    result = await pipe.process("invoice.txt")
+
+    fields = result.extraction
+    print(
+        f"  {GREEN}✔{RESET} ingest → extract → validate: "
+        f"{fields.found}/{len(fields.fields)} fields, "
+        f"state={result.validation.state.value} "
+        f"({result.validation.cross_checks_run} cross-checks, "
+        f"{result.validation.cross_checks_failed} failed)"
+    )
+    for name in ("invoice_number", "invoice_date", "due_date", "total"):
+        f = fields.fields[name]
+        print(
+            f"      {name:15s} = {str(f.effective):22s} "
+            f"conf={f.confidence:.2f} via {f.evidence.method.value}"
+        )
+
+    bad_result = await DocumentPipeline(
+        INVOICE_SCHEMA, engine=StubEngine(text=bad)
+    ).process("broken.txt")
+    codes = [i.code for i in bad_result.validation.errors]
+    print(
+        f"  {GREEN}✔{RESET} validation gate: state={bad_result.validation.state.value} "
+        f"routed_to_review={bad_result.routed_to_review} caught={codes}"
+    )
+    print(
+        f"  {GREEN}✔{RESET} provenance: every field carries page, source text and method"
+    )
+
+
 async def main() -> None:
     print(f"\n{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{CYAN}║     AGENT-COMPONENTS: ALL 11 COMPONENTS & PLATFORM LAYER VERIFICATION      ║{RESET}")
+    print(f"{BOLD}{CYAN}║     AGENT-COMPONENTS: ALL 12 COMPONENTS & PLATFORM LAYER VERIFICATION      ║{RESET}")
     print(f"{BOLD}{CYAN}╚════════════════════════════════════════════════════════════════════════════╝{RESET}")
 
     start_time = time.perf_counter()
@@ -453,12 +516,13 @@ async def main() -> None:
     await demo_eval_harness()
     await demo_agent_ui()
     await demo_distillation()
+    await demo_doc_processing()
     await demo_platform_component_graph()
 
     total_time = (time.perf_counter() - start_time) * 1000
 
     print(f"\n{BOLD}{GREEN}{'=' * 76}{RESET}")
-    print(f"{BOLD}{GREEN}🎉 ALL 11 COMPONENTS & PLATFORM ENGINEERING VERIFIED SUCCESSFULLY!{RESET}")
+    print(f"{BOLD}{GREEN}🎉 ALL 12 COMPONENTS & PLATFORM ENGINEERING VERIFIED SUCCESSFULLY!{RESET}")
     print(f"{BOLD}{GREEN}   Total execution time: {total_time:.1f}ms{RESET}")
     print(f"{BOLD}{GREEN}{'=' * 76}{RESET}\n")
 

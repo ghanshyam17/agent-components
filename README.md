@@ -25,6 +25,7 @@ agent-components/
     prompt-registry/           # versioned prompts
     agent-ui/                  # metadata-driven UI bridge
     distillation/              # synthetic data + LLM distillation
+    doc-processing/            # OCR → extraction → validation (IDP)
   platform/                    # enterprise engineering layer (ADF/AML/patterns)
   projects/                    # real deployments on the chassis (e.g. frenchcase)
   scripts/
@@ -78,7 +79,7 @@ hits = await vm.search(MemoryQuery(query="...", top_k=4))
 
 ## Roadmap
 
-The full curated taxonomy (in priority order). All 11 modular components and the enterprise Platform Engineering layer are completed.
+The full curated taxonomy (in priority order). All 12 modular components and the enterprise Platform Engineering layer are completed.
 
 | # | Component | Role | Status |
 |---|-----------|------|--------|
@@ -93,6 +94,7 @@ The full curated taxonomy (in priority order). All 11 modular components and the
 | 9 | `prompt-registry` | Versioned, templated prompts + hot-reload | ✅ Done |
 | 10 | `agent-ui` | Universal metadata-driven UI bridge (FastAPI + Fluent UI + SSE + Grafana + Power Automate) | ✅ Done |
 | 11 | `distillation` | Synthetic data generation + LLM distillation: teacher CoT mining, quality/safety curation, Foundry fine-tuning, teacher↔student parity matrix | ✅ Done |
+| 12 | `doc-processing` | Intelligent document processing: OCR/layout ingestion (Azure Document Intelligence + text-layer + stub), provenance-tracked field extraction, and layered validation (per-field, cross-field, document-level) | ✅ Done |
 | — | `platform` | *Layer (not a component):* Enterprise Platform Engineering — ADF & AML orchestrator, 8 design patterns, Medallion Lakehouse | ✅ Done |
 
 ## License

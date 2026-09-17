@@ -1,0 +1,38 @@
+[project]
+name = "doc-processing"
+version = "0.1.0"
+description = "Intelligent document processing: OCR/layout ingestion, schema-guided field extraction with provenance, and layered validation — offline engines plus Azure AI Document Intelligence."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Ghanshyam" }]
+license = { text = "MIT" }
+dependencies = [
+    # Foundational components — consumed, never duplicated.
+    "components-core",
+    "model-gateway",
+    "prompt-registry",
+    "guardrails",
+    "eval-harness",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+]
+
+[project.optional-dependencies]
+# Azure AI Document Intelligence (OCR, layout, prebuilt/custom extraction).
+azure = [
+    "azure-ai-documentintelligence>=1.0.0",
+    "azure-identity>=1.17.0",
+]
+# Local OCR fallback for offline use / PDFs with a text layer.
+local = [
+    "pypdf>=4.0",
+    "pytesseract>=0.3.10",
+    "pdf2image>=1.17",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["doc_processing"]
