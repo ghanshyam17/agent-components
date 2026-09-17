@@ -1,0 +1,17 @@
+[project]
+name = "context-manager"
+version = "0.1.0"
+description = "Context window management: budgeted assembly, priority-ordered eviction, compaction with an auditable decision trail."
+requires-python = ">=3.10"
+dependencies = ["pydantic>=2.0", "components-core"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["context_manager"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

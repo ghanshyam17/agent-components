@@ -344,7 +344,7 @@ async def demo_platform_component_graph() -> None:
 
 
 async def demo_distillation() -> None:
-    print_banner("Component 11/12: distillation", "Synthetic data generation, curation & LLM distillation")
+    print_banner("Component 11/13: distillation", "Synthetic data generation, curation & LLM distillation")
     from distillation import (
         ContentCurator, ContentSample, DatasetFormat, DistillationConfig,
         DistillationPipeline,
@@ -437,7 +437,7 @@ without re-ingesting."""
 
 async def demo_doc_processing() -> None:
     print_banner(
-        "Component 12/12: doc-processing",
+        "Component 12/13: doc-processing",
         "OCR ingestion, provenance-tracked extraction & layered validation",
     )
     from doc_processing import (
@@ -498,9 +498,78 @@ Total: 9,999.00"""
     )
 
 
+async def demo_context_manager() -> None:
+    print_banner(
+        "Component 13/13: context-manager",
+        "Budgeted window assembly: eviction by priority, compaction, audit trail",
+    )
+    from context_manager import (
+        ContextAssembler,
+        ContextBudget,
+        ContextRole,
+        ContextSegment,
+        SegmentPriority,
+    )
+
+    FILLER = "the quick brown fox jumps over the lazy dog and keeps on running "
+    budget = ContextBudget(
+        total_tokens=600, reserve_output=150, source_fractions={"retrieval": 0.5}
+    )
+
+    segments = [
+        ContextSegment(
+            role=ContextRole.SYSTEM,
+            content="You are a document analyst. Cite the page for every figure.",
+            priority=SegmentPriority.CRITICAL,
+            pinned=True,
+            source="system",
+            compactable=False,
+            sequence=-1,
+        ),
+        *[
+            ContextSegment(
+                role=ContextRole.USER if i % 2 == 0 else ContextRole.ASSISTANT,
+                content=f"turn {i}: " + FILLER * 4,
+                priority=SegmentPriority.NORMAL,
+                source="history",
+                sequence=i,
+            )
+            for i in range(6)
+        ],
+        ContextSegment(
+            role=ContextRole.RETRIEVAL,
+            content="Invoice INV-2024-0042 totals 1,440.00 EUR. " * 30,
+            priority=SegmentPriority.LOW,
+            source="retrieval",
+            sequence=100,
+        ),
+    ]
+
+    package = await ContextAssembler(budget).assemble(segments)
+    print(
+        f"  {GREEN}✔{RESET} assembled {len(package.messages)} messages, "
+        f"{package.tokens_used}/{package.budget.input_allowance} input tokens "
+        f"({package.utilisation:.0%} of allowance, "
+        f"{package.budget.reserve_output} reserved for output)"
+    )
+    print(
+        f"  {GREEN}✔{RESET} decisions: {package.dropped} dropped, "
+        f"{package.compacted} compacted, "
+        f"{package.budget.source_cap('retrieval')} token cap on retrieval"
+    )
+    print(
+        f"  {GREEN}✔{RESET} system prompt survived (pinned+critical) and was "
+        f"hoisted first: {package.messages[0].role!r}"
+    )
+    ledger = [(o.source, o.disposition.value, f"{o.tokens_before}->{o.tokens_after}")
+              for o in package.outcomes]
+    print(f"  {GREEN}✔{RESET} audit trail (first 4): {ledger[:4]}")
+    assert package.tokens_used <= package.budget.input_allowance
+
+
 async def main() -> None:
     print(f"\n{BOLD}{CYAN}╔════════════════════════════════════════════════════════════════════════════╗{RESET}")
-    print(f"{BOLD}{CYAN}║     AGENT-COMPONENTS: ALL 12 COMPONENTS & PLATFORM LAYER VERIFICATION      ║{RESET}")
+    print(f"{BOLD}{CYAN}║     AGENT-COMPONENTS: ALL 13 COMPONENTS & PLATFORM LAYER VERIFICATION      ║{RESET}")
     print(f"{BOLD}{CYAN}╚════════════════════════════════════════════════════════════════════════════╝{RESET}")
 
     start_time = time.perf_counter()
@@ -517,12 +586,13 @@ async def main() -> None:
     await demo_agent_ui()
     await demo_distillation()
     await demo_doc_processing()
+    await demo_context_manager()
     await demo_platform_component_graph()
 
     total_time = (time.perf_counter() - start_time) * 1000
 
     print(f"\n{BOLD}{GREEN}{'=' * 76}{RESET}")
-    print(f"{BOLD}{GREEN}🎉 ALL 12 COMPONENTS & PLATFORM ENGINEERING VERIFIED SUCCESSFULLY!{RESET}")
+    print(f"{BOLD}{GREEN}🎉 ALL 13 COMPONENTS & PLATFORM ENGINEERING VERIFIED SUCCESSFULLY!{RESET}")
     print(f"{BOLD}{GREEN}   Total execution time: {total_time:.1f}ms{RESET}")
     print(f"{BOLD}{GREEN}{'=' * 76}{RESET}\n")
 

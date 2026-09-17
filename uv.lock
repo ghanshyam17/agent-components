@@ -14,6 +14,7 @@ members = [
     "agent-ui",
     "agentic-router",
     "components-core",
+    "context-manager",
     "distillation",
     "doc-processing",
     "eval-harness",
@@ -875,6 +876,21 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pydantic", specifier = ">=2.6" }]
+
+[[package]]
+name = "context-manager"
+version = "0.1.0"
+source = { editable = "components/context-manager" }
+dependencies = [
+    { name = "components-core" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "components-core", editable = "core" },
+    { name = "pydantic", specifier = ">=2.0" },
+]
 
 [[package]]
 name = "cryptography"
